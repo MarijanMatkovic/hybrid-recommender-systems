@@ -67,7 +67,8 @@ B = P·XᵀX  (with diagonal constraint applied)
 │   └── hybrid.py            # All 4 hybridization strategies
 ├── data/
 │   ├── loader.py            # MovieLens data loading and temporal split
-│   └── ml-1m/               # MovieLens 1M dataset
+│   ├── ml-1m/               # MovieLens 1M dataset
+│   └── ml-lastest-small/    # MovieLens small dataset
 └── evaluation/
     └── metrics.py           # NDCG, MAP, HR, MRR, Precision, Recall,
                              # Coverage, Gini, Novelty
@@ -126,7 +127,7 @@ In contrast, `‖B−W‖²` penalizes every element of B. Since W is ~97% zeros
 
 ## Datasets
 
-Evaluated on [MovieLens 1M](https://grouplens.org/datasets/movielens/1m/) (6,040 users, 3,706 items, ~1M ratings). Temporal split 80/20, ratings ≥ 4.0 as positive implicit feedback.
+Evaluated on [MovieLens 1M](https://grouplens.org/datasets/movielens/1m/) (6,040 users, 3,706 items, ~1M ratings) and [MovieLens Small](https://www.kaggle.com/datasets/shubhammehta21/movie-lens-small-latest-dataset). Temporal split 80/20, ratings ≥ 4.0 as positive implicit feedback.
 
 411 hyperparameter configurations tested across all models.
 
