@@ -45,17 +45,23 @@ Everything below assumes you're in the repo root.
 bash hpc/env_setup.sh
 ```
 
-This loads `python/3.11`, creates a virtualenv at `~/diplomski_env`,
-installs numpy / scipy / scikit-learn / pandas / matplotlib / pytest,
-and runs `pytest` as a sanity check.
+This loads `cray-python/3.11.7` (Cray's build with numpy/scipy linked
+against LibSci), creates a virtualenv at `~/diplomski_env` with
+`--system-site-packages` so it inherits the tuned numpy/scipy, then
+pip-installs scikit-learn, pandas, matplotlib, pytest on top. Finally
+it runs `pytest` as a sanity check.
 
-If your cluster has a different Python module name, override it:
+If you want a different Python, list available modules with
+`module spider python` and override:
 
 ```bash
-PYTHON_MODULE=python/3.12 bash hpc/env_setup.sh
+PYTHON_MODULE=utils/python/3.12.2 bash hpc/env_setup.sh
 ```
 
-Check available modules with `module avail python`.
+On Supek the available options are `cray-python/{3.9.13.1, 3.10.10,
+3.11.7}` and `utils/python/{2.7.18, 3.12.2}`. Prefer the `cray-python`
+family -- the `utils/python` builds are plain CPython with unoptimised
+numpy.
 
 ## 4. Submit the experiments
 

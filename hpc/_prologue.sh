@@ -10,7 +10,7 @@
 set -euo pipefail
 
 ENV_DIR="${ENV_DIR:-$HOME/diplomski_env}"
-PYTHON_MODULE="${PYTHON_MODULE:-python/3.11}"
+PYTHON_MODULE="${PYTHON_MODULE:-cray-python/3.11.7}"
 
 module purge
 module load "$PYTHON_MODULE"
