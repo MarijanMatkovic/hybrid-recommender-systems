@@ -1,2 +1,7 @@
+# Keep shell / PBS scripts in LF on all platforms -- these are executed
+# on Linux (Supek), and CRLF endings break bash with "\r: command not
+# found" or "bad interpreter" errors.
+*.sh   text eol=lf
+*.pbs  text eol=lf
 data/netflixprize/*.txt filter=lfs diff=lfs merge=lfs -text
 data/netflixprize/*.csv filter=lfs diff=lfs merge=lfs -text
