@@ -1,0 +1,158 @@
+"""
+Graph-source ablation for Laplacian-regularized EASE.
+
+Compares four graph sources for the Laplacian penalty:
+    - rp3beta  (reference)
+    - p3alpha
+    - itemknn  (cosine similarity top-K)
+    - binary   (binary co-occurrence)
+
+All share identical EASE hyperparameters so the only moving part is the
+graph used to build L.
+
+Example:
+    python -m experiments.graph_source_ablation --dataset ml-small --k 10
+"""
+
+from __future__ import annotations
+
+import argparse
+import time
+from pathlib import Path
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from evaluation.metrics import evaluate
+from models import HybridEASE_RP3beta
+from models.graph_sources import VALID_SOURCES
+
+from experiments._shared import ensure_results_dir, load_dataset
+
+
+def run(dataset='ml-small', k=10,
+        ease_lambda=None, gammas=None,
+        topK=200, sources=None,
+        rp3_beta=0.6, p3_alpha=1.0, itemknn_shrink=0.0,
+        out_dir=None):
+    if ease_lambda is None:
+        ease_lambda = 500 if dataset == 'ml-1m' else 200
+    if gammas is None:
+        gammas = [0.3, 1.0, 3.0, 10.0, 30.0, 100.0]
+    if sources is None:
+        sources = list(VALID_SOURCES)
+
+    out_dir = ensure_results_dir('graph_source_ablation'
+                                 if out_dir is None else out_dir)
+
+    train, test_positive, _ = load_dataset(dataset)
+
+    rows = []
+    # Baseline: EASE with no Laplacian (gamma=0 via the standard path).
+    print("\n[baseline] EASE (no Laplacian)")
+    t0 = time.time()
+    base = HybridEASE_RP3beta()
+    base.fit(train, method='score', fusion_alpha=1.0,
+             ease_lambda=ease_lambda, rp3_alpha=1.0,
+             rp3_beta=rp3_beta, rp3_topK=topK)
+    # fusion_alpha=1.0 + score method reduces to pure EASE after min-max
+    # normalisation. To stay apples-to-apples, evaluate via the plain EASE
+    # prediction ``X @ B``.
+    base.pred = base.ease.X.dot(base.ease.B)
+    res_base = evaluate(base, train, test_positive, k=k)
+    dt_base = time.time() - t0
+    print(f"  NDCG={res_base['NDCG@k']:.4f}  ({dt_base:.1f}s)")
+
+    for source in sources:
+        print(f"\n[source={source}]")
+        for gamma in gammas:
+            t0 = time.time()
+            model = HybridEASE_RP3beta()
+            model.fit(train, method='laplacian',
+                      ease_lambda=ease_lambda, rp3_alpha=1.0,
+                      rp3_beta=rp3_beta, rp3_topK=topK,
+                      graph_reg_gamma=gamma,
+                      graph_source=source,
+                      p3_alpha=p3_alpha,
+                      itemknn_shrink=itemknn_shrink)
+            res = evaluate(model, train, test_positive, k=k)
+            dt = time.time() - t0
+            rows.append({
+                'dataset': dataset,
+                'source': source,
+                'ease_lambda': ease_lambda,
+                'gamma': gamma,
+                'rp3_beta': rp3_beta,
+                'topK': topK,
+                'NDCG@k': res['NDCG@k'],
+                'MAP@k': res['MAP@k'],
+                'HitRate@k': res['HitRate@k'],
+                'Recall@k': res['Recall@k'],
+                'train_time_s': dt,
+            })
+            print(f"  gamma={gamma:<6.2f} "
+                  f"NDCG={res['NDCG@k']:.4f} "
+                  f"MAP={res['MAP@k']:.4f} "
+                  f"HR={res['HitRate@k']:.4f}  ({dt:.1f}s)")
+
+    df = pd.DataFrame(rows)
+    csv_path = out_dir / f'graph_source_ablation_{dataset}.csv'
+    df.to_csv(csv_path, index=False)
+    print(f"\nSaved CSV to {csv_path}")
+
+    # ---- Plot NDCG vs gamma per source ----
+    fig, ax = plt.subplots(figsize=(7.5, 4.8))
+    for src, g in df.groupby('source'):
+        g = g.sort_values('gamma')
+        ax.plot(g['gamma'], g['NDCG@k'], marker='o', label=src)
+    ax.axhline(res_base['NDCG@k'], ls='--', color='grey',
+               label=f"EASE baseline ({res_base['NDCG@k']:.4f})")
+    ax.set_xscale('log')
+    ax.set_xlabel(r'$\gamma$ (Laplacian strength, log scale)')
+    ax.set_ylabel(f'NDCG@{k}')
+    ax.set_title(f'Graph-source ablation — {dataset}')
+    ax.grid(True, which='both', ls=':', alpha=0.5)
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    png_path = out_dir / f'graph_source_ablation_{dataset}.png'
+    fig.savefig(png_path, dpi=140)
+    plt.close(fig)
+    print(f"Saved plot to {png_path}")
+
+    # Best per source
+    print("\nBest gamma per source (by NDCG@k):")
+    best = (df.sort_values('NDCG@k', ascending=False)
+              .groupby('source').head(1)
+              .sort_values('NDCG@k', ascending=False))
+    print(best[['source', 'gamma', 'NDCG@k', 'MAP@k',
+                'HitRate@k']].to_string(index=False))
+
+    return df
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument('--dataset', default='ml-small',
+                   choices=['ml-small', 'ml-1m'])
+    p.add_argument('--k', type=int, default=10)
+    p.add_argument('--topK', type=int, default=200)
+    p.add_argument('--ease_lambda', type=float, default=None)
+    p.add_argument('--rp3_beta', type=float, default=0.6)
+    p.add_argument('--sources', type=str, default=None,
+                   help='Comma-separated list of graph sources to test')
+    args = p.parse_args()
+
+    sources = None
+    if args.sources:
+        sources = [s.strip() for s in args.sources.split(',')]
+
+    run(dataset=args.dataset, k=args.k, topK=args.topK,
+        ease_lambda=args.ease_lambda, rp3_beta=args.rp3_beta,
+        sources=sources)
+
+
+if __name__ == '__main__':
+    main()

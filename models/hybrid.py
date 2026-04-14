@@ -5,6 +5,7 @@ from scipy.sparse import csr_matrix
 
 from models.ease import EASE
 from models.rp3beta import RP3beta
+from models.graph_sources import build_graph
 
 
 class HybridEASE_RP3beta:
@@ -15,6 +16,11 @@ class HybridEASE_RP3beta:
       - 'Score': Score-level weighted ensemble (Level 1)
       - 'Matrix': Matrix-level fusion before prediction (Level 2)
       - 'Graph_reg': Graph-regularized EASEr objective (Level 3)
+      - 'Laplacian': Laplacian-regularized EASEr objective (Level 4)
+
+    For the Laplacian variant the graph source is configurable via
+    ``graph_source`` (default 'rp3beta'); supported: rp3beta, p3alpha,
+    itemknn, binary.
     """
 
     def __init__(self):
@@ -29,7 +35,11 @@ class HybridEASE_RP3beta:
             # Hybrid params
             fusion_alpha=0.5,
             # Graph-reg params (Level 3 only)
-            graph_reg_gamma=0.0001):   #graph_reg_gamma = 0.1
+            graph_reg_gamma=0.0001,   #graph_reg_gamma = 0.1
+            # Graph source (Laplacian only)
+            graph_source='rp3beta',
+            p3_alpha=1.0,
+            itemknn_shrink=0.0):
         """
         Fit the hybrid model.
 
@@ -68,16 +78,33 @@ class HybridEASE_RP3beta:
             B, X = self._fit_laplacian_ease(
                 df, ease_lambda, implicit,
                 rp3_alpha, rp3_beta, rp3_topK,
-                graph_reg_gamma
+                graph_reg_gamma,
+                graph_source=graph_source,
+                p3_alpha=p3_alpha,
+                itemknn_shrink=itemknn_shrink,
             )
         else:
             B, X = self.ease.fit(df, lambda_=ease_lambda, implicit=implicit)
 
         # --- Fit RP3beta on the same interaction matrix ---
-        W = self.rp3.fit(
-            X, alpha=rp3_alpha, beta=rp3_beta,
-            topK=rp3_topK, implicit=implicit
-        )
+        # Skipped for the Laplacian path -- the graph was already built
+        # from the configured source inside _fit_laplacian_ease.
+        if method != 'laplacian':
+            W = self.rp3.fit(
+                X, alpha=rp3_alpha, beta=rp3_beta,
+                topK=rp3_topK, implicit=implicit
+            )
+        else:
+            # The Laplacian path stores the built graph on
+            # ``_fit_laplacian_ease``; fall back to a plain rp3beta fit
+            # if the Laplacian branch used a different source and we
+            # still need a W for downstream analysis.
+            W = getattr(self.rp3, 'W', None)
+            if W is None:
+                W = self.rp3.fit(
+                    X, alpha=rp3_alpha, beta=rp3_beta,
+                    topK=rp3_topK, implicit=implicit,
+                )
 
         n_items = X.shape[1]
 
@@ -220,7 +247,10 @@ class HybridEASE_RP3beta:
 
     def _fit_laplacian_ease(self, df, lambda_, implicit,
                             rp3_alpha, rp3_beta, rp3_topK,
-                            gamma):
+                            gamma,
+                            graph_source='rp3beta',
+                            p3_alpha=1.0,
+                            itemknn_shrink=0.0):
         """
         Level 4: Graph Laplacian-Regularized EASE.
 
@@ -228,20 +258,9 @@ class HybridEASE_RP3beta:
             min_B ||X - XB||^2_F + λ||B||^2_F + γ · tr(B^T L B)
                 s.t. diag(B) = 0
 
-        where L = D_W - W_sym is the graph Laplacian built from RP3beta's
-        item-item similarity matrix W.
-
-        KEY DIFFERENCE from Level 3 (graph_reg):
-        - graph_reg uses ||B - W||^2 which penalizes B for DIFFERING from W
-          element-wise. This fails because W is sparse and B is dense, so the
-          penalty mostly pushes B toward zero where W has no entries.
-
-        - Laplacian uses tr(B^T L B) = Σ_{i,j} W_ij ||b_i - b_j||^2 where
-          b_i is the i-th row (or column) of B. This penalizes B only for
-          giving DIFFERENT weight vectors to items that the graph says are
-          SIMILAR. It doesn't care about the absolute values, only relative
-          smoothness over the graph. Items not connected in W contribute zero
-          penalty — they are free to take any value.
+        where L = D_W - W_sym is the graph Laplacian built from one of
+        several item-item similarity sources (RP3beta, P3alpha, ItemKNN
+        cosine, binary co-occurrence).
 
         Derivation:
             ∂L/∂B = -2 X^T(X - XB) + 2λB + 2γLB = 0
@@ -268,32 +287,42 @@ class HybridEASE_RP3beta:
         self.ease.X = X
         n_items = X.shape[1]
 
-        # Fit RP3beta to get W (unnormalized for graph construction)
-        W_sparse = self.rp3.fit(
-            X, alpha=rp3_alpha, beta=rp3_beta,
-            topK=rp3_topK, implicit=implicit,
-            normalize_similarity=False
+        # Build the item-item similarity matrix from the chosen graph source.
+        W_sparse = build_graph(
+            X, source=graph_source, topK=rp3_topK,
+            rp3_alpha=rp3_alpha, rp3_beta=rp3_beta,
+            p3_alpha=p3_alpha,
+            itemknn_shrink=itemknn_shrink,
+            implicit=implicit,
         )
+        # Expose the graph on ``self.rp3`` so downstream analysis code
+        # (and the fit() dispatcher) can always read ``self.rp3.W`` even
+        # when we fit a non-RP3beta graph.
+        self.rp3.W = W_sparse
+        if graph_source == 'rp3beta':
+            self.rp3.alpha = rp3_alpha
+            self.rp3.beta = rp3_beta
+            self.rp3.topK = rp3_topK
+
         W = W_sparse.toarray()
 
         # Symmetrize: W_sym = (W + W^T) / 2
         W_sym = (W + W.T) / 2.0
 
         # Build graph Laplacian: L = D - W_sym
-        # D is diagonal matrix of row sums of W_sym
-        degrees = W_sym.sum(axis=1)  # shape (n_items,)
+        degrees = W_sym.sum(axis=1)
         L = np.diag(degrees) - W_sym
 
-        # Scale L so that gamma directly controls relative influence.
-        # We scale L so that mean(diag(L)) ≈ mean(diag(G)).
-        # Then gamma=1 means "equal weight to reconstruction and smoothness".
+        # Scale L so that mean(diag(L)) ≈ mean(diag(G)).
         G_raw = X.T.dot(X).toarray()
         g_diag_mean = np.mean(np.diag(G_raw))
-        l_diag_mean = np.mean(degrees)  # diag(L) = degrees
+        l_diag_mean = np.mean(degrees)
         if l_diag_mean > 0:
             L_scaled = L * (g_diag_mean / l_diag_mean)
         else:
             L_scaled = L
+
+        self.L_scaled = L_scaled  # expose for downstream models (SLIM/EDLAE)
 
         # Modified Gram matrix: G + λI + γL
         G = G_raw.copy()
@@ -303,10 +332,8 @@ class HybridEASE_RP3beta:
 
         P = np.linalg.inv(G)
 
-        # B_unconstrained = P · G_raw
         B_unconstrained = P.dot(G_raw)
 
-        # Diagonal constraint (column-wise Lagrange multipliers)
         diag_P = np.diag(P)
         diag_B_unc = np.diag(B_unconstrained)
         mu = diag_B_unc / diag_P
