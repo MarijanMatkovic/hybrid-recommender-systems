@@ -1,0 +1,31 @@
+#!/bin/bash
+# =====================================================================
+# Head vs tail analysis on ml-1m.
+#
+# Uses the best (lambda, gamma, rp3_beta) from previous runs by default.
+# Override on the command line when submitting, e.g.:
+#     qsub -v EASE_LAMBDA=200,GAMMA=75 hpc/run_head_tail.pbs
+# =====================================================================
+#PBS -N lap_head_tail
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+#PBS -o logs/head_tail.log
+
+source hpc/_prologue.sh
+
+EASE_LAMBDA="${EASE_LAMBDA:-100}"
+GAMMA="${GAMMA:-75}"
+RP3_BETA="${RP3_BETA:-0.3}"
+GRAPH_SOURCE="${GRAPH_SOURCE:-rp3beta}"
+N_BUCKETS="${N_BUCKETS:-5}"
+
+python -m experiments.head_tail_analysis \
+    --dataset ml-1m \
+    --k 10 \
+    --lambda_ "$EASE_LAMBDA" \
+    --gamma "$GAMMA" \
+    --rp3_beta "$RP3_BETA" \
+    --graph_source "$GRAPH_SOURCE" \
+    --n_buckets "$N_BUCKETS"

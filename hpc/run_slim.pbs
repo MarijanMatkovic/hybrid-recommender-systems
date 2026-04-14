@@ -1,0 +1,31 @@
+#!/bin/bash
+# =====================================================================
+# SLIM + Laplacian-SLIM sweep on ml-1m.
+#
+# SLIM is the SLOW experiment: per-item coordinate descent runs column
+# by column, and on ml-1m there are ~3700 items. Budget 20 hours of
+# walltime and 64 GB of RAM to be safe. If it runs out of time, reduce
+# the gamma grid or drop max_iter in slim_experiments.py.
+# =====================================================================
+#PBS -N lap_slim
+#PBS -q cpu
+#PBS -l select=1:ncpus=16:mem=64gb
+#PBS -l walltime=20:00:00
+#PBS -j oe
+#PBS -o logs/slim.log
+
+source hpc/_prologue.sh
+
+# Keep the sklearn per-column solver single-threaded so that our outer
+# loop parallelism (if we add it later) is predictable. Still benefits
+# from multi-threaded BLAS on matrix products.
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+
+python -m experiments.slim_experiments \
+    --dataset ml-1m \
+    --k 10 \
+    --gammas "1,3,10,30,75" \
+    --n_iter 150 \
+    --topK 200

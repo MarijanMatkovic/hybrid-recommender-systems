@@ -1,0 +1,23 @@
+#!/bin/bash
+# =====================================================================
+# Graph-source ablation on ml-1m.
+#
+# Submit from the repo root:
+#     qsub hpc/run_graph_ablation.pbs
+# =====================================================================
+#PBS -N lap_graph_ablation
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=06:00:00
+#PBS -j oe
+#PBS -o logs/graph_ablation.log
+
+source hpc/_prologue.sh
+
+# Matches the gammas we converged on in the ml-small run, but extended
+# on the upper end since ml-1m's previous sweep peaked near gamma=50-100.
+python -m experiments.graph_source_ablation \
+    --dataset ml-1m \
+    --k 10 \
+    --topK 200 \
+    --rp3_beta 0.6

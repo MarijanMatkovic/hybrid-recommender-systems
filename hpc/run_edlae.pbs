@@ -1,0 +1,19 @@
+#!/bin/bash
+# =====================================================================
+# EDLAE + Laplacian-EDLAE sweep on ml-1m.
+#
+# EDLAE is closed-form so this is cheap -- budget 2 h walltime.
+# =====================================================================
+#PBS -N lap_edlae
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+#PBS -o logs/edlae.log
+
+source hpc/_prologue.sh
+
+python -m experiments.edlae_experiments \
+    --dataset ml-1m \
+    --k 10 \
+    --gammas "0.3,1,3,10,30,75,100,200"
