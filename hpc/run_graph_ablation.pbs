@@ -12,6 +12,9 @@
 #PBS -j oe
 #PBS -o logs/graph_ablation.log
 
+# PBS drops us in $HOME -- cd to the repo root before sourcing the
+# prologue, since its path is relative.
+cd "${PBS_O_WORKDIR:-$PWD}"
 source hpc/_prologue.sh
 
 # Matches the gammas we converged on in the ml-small run, but extended

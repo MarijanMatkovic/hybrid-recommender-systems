@@ -11,6 +11,9 @@
 #PBS -j oe
 #PBS -o logs/edlae.log
 
+# PBS drops us in $HOME -- cd to the repo root before sourcing the
+# prologue, since its path is relative.
+cd "${PBS_O_WORKDIR:-$PWD}"
 source hpc/_prologue.sh
 
 python -m experiments.edlae_experiments \

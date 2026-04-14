@@ -13,6 +13,9 @@
 #PBS -j oe
 #PBS -o logs/head_tail.log
 
+# PBS drops us in $HOME -- cd to the repo root before sourcing the
+# prologue, since its path is relative.
+cd "${PBS_O_WORKDIR:-$PWD}"
 source hpc/_prologue.sh
 
 EASE_LAMBDA="${EASE_LAMBDA:-100}"
