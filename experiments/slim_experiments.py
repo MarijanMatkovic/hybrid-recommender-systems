@@ -56,6 +56,7 @@ def run(dataset='ml-small', k=10,
         gammas=None, graph_source='rp3beta',
         rp3_beta=0.6, topK=200,
         n_iter=200,
+        normalise='none',
         out_dir=None):
     if gammas is None:
         gammas = [0.3, 1.0, 3.0, 10.0, 30.0]
@@ -114,14 +115,14 @@ def run(dataset='ml-small', k=10,
     X = ease_ref.ease.X
     W = build_graph(X, source=graph_source, topK=topK,
                     rp3_beta=rp3_beta, implicit=True)
-    L_dense, _ = build_laplacian(W)
+    L_dense, _ = build_laplacian(W, normalise=normalise)
     G_diag_mean = float(np.mean(np.array(
         X.multiply(X).sum(axis=0)).flatten()))  # ≈ mean(diag(X^T X))
     L_scaled = _scale_laplacian(L_dense, G_diag_mean)
 
     # ---- 4) Laplacian SLIM sweep ----
     for gamma in gammas:
-        print(f"\n[SLIM-Laplacian] gamma={gamma}")
+        print(f"\n[SLIM-Laplacian] gamma={gamma}  normalise={normalise}")
         t0 = time.time()
         slim_lap = SLIM()
         slim_lap.fit_laplacian(
@@ -137,6 +138,7 @@ def run(dataset='ml-small', k=10,
             'model': 'SLIM-Laplacian',
             'gamma': gamma,
             'graph_source': graph_source,
+            'normalise': normalise,
             'NDCG@k': res['NDCG@k'],
             'MAP@k': res['MAP@k'],
             'HitRate@k': res['HitRate@k'],
@@ -145,7 +147,8 @@ def run(dataset='ml-small', k=10,
         })
 
     df = pd.DataFrame(rows)
-    csv_path = out_dir / f'slim_{dataset}.csv'
+    suffix = '_sym' if normalise == 'sym' else ''
+    csv_path = out_dir / f'slim_{dataset}{suffix}.csv'
     df.to_csv(csv_path, index=False)
     print(f"\nSaved CSV to {csv_path}")
 
@@ -161,11 +164,12 @@ def run(dataset='ml-small', k=10,
     ax.set_xscale('log')
     ax.set_xlabel(r'$\gamma$ (Laplacian strength, log scale)')
     ax.set_ylabel(f'NDCG@{k}')
-    ax.set_title(f'SLIM + Laplacian — {dataset}')
+    title_extra = f' [sym L]' if normalise == 'sym' else ''
+    ax.set_title(f'SLIM + Laplacian — {dataset}{title_extra}')
     ax.grid(True, which='both', ls=':', alpha=0.5)
     ax.legend(frameon=False)
     fig.tight_layout()
-    png_path = out_dir / f'slim_{dataset}.png'
+    png_path = out_dir / f'slim_{dataset}{suffix}.png'
     fig.savefig(png_path, dpi=140)
     plt.close(fig)
     print(f"Saved plot to {png_path}")
@@ -186,6 +190,9 @@ def main():
     p.add_argument('--gammas', type=str, default=None,
                    help='Comma-separated gamma values (optional)')
     p.add_argument('--n_iter', type=int, default=200)
+    p.add_argument('--normalise', default='none',
+                   choices=['none', 'sym'],
+                   help='Laplacian normalisation. Default: none.')
     args = p.parse_args()
 
     gammas = None
@@ -196,7 +203,7 @@ def main():
         l1_reg=args.l1_reg, beta=args.beta,
         gammas=gammas, graph_source=args.graph_source,
         rp3_beta=args.rp3_beta, topK=args.topK,
-        n_iter=args.n_iter)
+        n_iter=args.n_iter, normalise=args.normalise)
 
 
 if __name__ == '__main__':

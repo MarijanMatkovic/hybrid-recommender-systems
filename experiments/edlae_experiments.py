@@ -52,6 +52,7 @@ def run(dataset='ml-small', k=10,
         gammas=None, graph_source='rp3beta',
         rp3_beta=0.6, topK=200,
         dropouts=None,
+        normalise='none',
         out_dir=None):
     if lambda_ is None:
         lambda_ = 500 if dataset == 'ml-1m' else 200
@@ -124,14 +125,15 @@ def run(dataset='ml-small', k=10,
     X = ease_ref.ease.X
     W = build_graph(X, source=graph_source, topK=topK,
                     rp3_beta=rp3_beta, implicit=True)
-    L_dense, _ = build_laplacian(W)
+    L_dense, _ = build_laplacian(W, normalise=normalise)
     G_diag_mean = float(np.mean(np.array(
         X.multiply(X).sum(axis=0)).flatten()))
     L_scaled = _scale_laplacian(L_dense, G_diag_mean)
 
     # ---- 4) Laplacian-EDLAE sweep at the best dropout ----
     for gamma in gammas:
-        print(f"\n[EDLAE-Laplacian] dropout={best_edlae_dropout}, gamma={gamma}")
+        print(f"\n[EDLAE-Laplacian] dropout={best_edlae_dropout}, "
+              f"gamma={gamma}, normalise={normalise}")
         t0 = time.time()
         edlae_lap = EDLAE()
         edlae_lap.fit_laplacian(
@@ -149,6 +151,7 @@ def run(dataset='ml-small', k=10,
             'dropout': best_edlae_dropout,
             'gamma': gamma,
             'graph_source': graph_source,
+            'normalise': normalise,
             'NDCG@k': res['NDCG@k'],
             'MAP@k': res['MAP@k'],
             'HitRate@k': res['HitRate@k'],
@@ -157,7 +160,8 @@ def run(dataset='ml-small', k=10,
         })
 
     df = pd.DataFrame(rows)
-    csv_path = out_dir / f'edlae_{dataset}.csv'
+    suffix = '_sym' if normalise == 'sym' else ''
+    csv_path = out_dir / f'edlae_{dataset}{suffix}.csv'
     df.to_csv(csv_path, index=False)
     print(f"\nSaved CSV to {csv_path}")
 
@@ -173,11 +177,12 @@ def run(dataset='ml-small', k=10,
     ax.set_xscale('log')
     ax.set_xlabel(r'$\gamma$ (Laplacian strength, log scale)')
     ax.set_ylabel(f'NDCG@{k}')
-    ax.set_title(f'EDLAE + Laplacian — {dataset}')
+    title_extra = f' [sym L]' if normalise == 'sym' else ''
+    ax.set_title(f'EDLAE + Laplacian — {dataset}{title_extra}')
     ax.grid(True, which='both', ls=':', alpha=0.5)
     ax.legend(frameon=False)
     fig.tight_layout()
-    png_path = out_dir / f'edlae_{dataset}.png'
+    png_path = out_dir / f'edlae_{dataset}{suffix}.png'
     fig.savefig(png_path, dpi=140)
     plt.close(fig)
     print(f"Saved plot to {png_path}")
@@ -197,6 +202,9 @@ def main():
     p.add_argument('--topK', type=int, default=200)
     p.add_argument('--gammas', type=str, default=None,
                    help='Comma-separated gamma values (optional)')
+    p.add_argument('--normalise', default='none',
+                   choices=['none', 'sym'],
+                   help='Laplacian normalisation. Default: none.')
     args = p.parse_args()
 
     gammas = None
@@ -211,7 +219,7 @@ def main():
         lambda_=args.lambda_, gammas=gammas,
         graph_source=args.graph_source,
         rp3_beta=args.rp3_beta, topK=args.topK,
-        dropouts=dropouts)
+        dropouts=dropouts, normalise=args.normalise)
 
 
 if __name__ == '__main__':

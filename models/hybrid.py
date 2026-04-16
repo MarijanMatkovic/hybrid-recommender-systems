@@ -5,7 +5,7 @@ from scipy.sparse import csr_matrix
 
 from models.ease import EASE
 from models.rp3beta import RP3beta
-from models.graph_sources import build_graph
+from models.graph_sources import build_graph, build_laplacian
 
 
 class HybridEASE_RP3beta:
@@ -39,7 +39,9 @@ class HybridEASE_RP3beta:
             # Graph source (Laplacian only)
             graph_source='rp3beta',
             p3_alpha=1.0,
-            itemknn_shrink=0.0):
+            itemknn_shrink=0.0,
+            # Laplacian normalisation (Laplacian only): 'none' or 'sym'
+            laplacian_normalise='none'):
         """
         Fit the hybrid model.
 
@@ -82,6 +84,7 @@ class HybridEASE_RP3beta:
                 graph_source=graph_source,
                 p3_alpha=p3_alpha,
                 itemknn_shrink=itemknn_shrink,
+                laplacian_normalise=laplacian_normalise,
             )
         else:
             B, X = self.ease.fit(df, lambda_=ease_lambda, implicit=implicit)
@@ -250,7 +253,8 @@ class HybridEASE_RP3beta:
                             gamma,
                             graph_source='rp3beta',
                             p3_alpha=1.0,
-                            itemknn_shrink=0.0):
+                            itemknn_shrink=0.0,
+                            laplacian_normalise='none'):
         """
         Level 4: Graph Laplacian-Regularized EASE.
 
@@ -258,9 +262,13 @@ class HybridEASE_RP3beta:
             min_B ||X - XB||^2_F + λ||B||^2_F + γ · tr(B^T L B)
                 s.t. diag(B) = 0
 
-        where L = D_W - W_sym is the graph Laplacian built from one of
-        several item-item similarity sources (RP3beta, P3alpha, ItemKNN
-        cosine, binary co-occurrence).
+        where L is the graph Laplacian built from one of several item-item
+        similarity sources (RP3beta, P3alpha, ItemKNN cosine, binary
+        co-occurrence). The Laplacian variant is controlled by
+        ``laplacian_normalise``:
+          - 'none' :  L = D - W_sym  (combinatorial Laplacian)
+          - 'sym'  :  L = I - D^{-1/2} W_sym D^{-1/2}  (symmetric
+                      normalised; eigenvalues in [0, 2])
 
         Derivation:
             ∂L/∂B = -2 X^T(X - XB) + 2λB + 2γLB = 0
@@ -304,25 +312,24 @@ class HybridEASE_RP3beta:
             self.rp3.beta = rp3_beta
             self.rp3.topK = rp3_topK
 
-        W = W_sparse.toarray()
+        # Build the (sym or unnormalised) Laplacian via the shared helper
+        # so the same code path is used for downstream SLIM/EDLAE models.
+        L, degrees = build_laplacian(W_sparse, normalise=laplacian_normalise)
 
-        # Symmetrize: W_sym = (W + W^T) / 2
-        W_sym = (W + W.T) / 2.0
-
-        # Build graph Laplacian: L = D - W_sym
-        degrees = W_sym.sum(axis=1)
-        L = np.diag(degrees) - W_sym
-
-        # Scale L so that mean(diag(L)) ≈ mean(diag(G)).
+        # Scale L so that mean(diag(L)) ≈ mean(diag(G)). For the sym
+        # variant diag(L)=1 on non-isolated items, so the scaling factor
+        # collapses to g_diag_mean (much larger). Sweepers should expect
+        # the optimal gamma to differ between normalisations.
         G_raw = X.T.dot(X).toarray()
         g_diag_mean = np.mean(np.diag(G_raw))
-        l_diag_mean = np.mean(degrees)
+        l_diag_mean = np.mean(np.diag(L))
         if l_diag_mean > 0:
             L_scaled = L * (g_diag_mean / l_diag_mean)
         else:
             L_scaled = L
 
         self.L_scaled = L_scaled  # expose for downstream models (SLIM/EDLAE)
+        self.laplacian_normalise = laplacian_normalise
 
         # Modified Gram matrix: G + λI + γL
         G = G_raw.copy()

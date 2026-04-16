@@ -19,8 +19,14 @@ source hpc/_prologue.sh
 
 # Matches the gammas we converged on in the ml-small run, but extended
 # on the upper end since ml-1m's previous sweep peaked near gamma=50-100.
+#
+# Override NORMALISE=sym at submit time to run with the symmetric
+# normalised Laplacian variant.
+NORMALISE="${NORMALISE:-none}"
+
 python -m experiments.graph_source_ablation \
     --dataset ml-1m \
     --k 10 \
     --topK 200 \
-    --rp3_beta 0.6
+    --rp3_beta 0.6 \
+    --normalise "$NORMALISE"

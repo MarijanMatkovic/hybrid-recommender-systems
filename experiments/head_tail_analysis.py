@@ -130,7 +130,7 @@ def _evaluate_by_bucket(model, train_df, test_df, bucket_of, k=10):
 
 def run(dataset='ml-small', k=10,
         ease_lambda=None, gamma=None, rp3_beta=0.6, rp3_topK=200,
-        graph_source='rp3beta',
+        graph_source='rp3beta', normalise='none',
         n_buckets=3,
         out_dir=None):
     if ease_lambda is None:
@@ -161,13 +161,15 @@ def run(dataset='ml-small', k=10,
           f"  ({time.time()-t0:.1f}s)")
 
     # ---- Laplacian ----
-    print(f"\n[Laplacian] source={graph_source}, gamma={gamma}")
+    print(f"\n[Laplacian] source={graph_source}, gamma={gamma}, "
+          f"normalise={normalise}")
     t0 = time.time()
     lap = HybridEASE_RP3beta()
     lap.fit(train, method='laplacian',
             ease_lambda=ease_lambda, rp3_alpha=1.0,
             rp3_beta=rp3_beta, rp3_topK=rp3_topK,
-            graph_reg_gamma=gamma, graph_source=graph_source)
+            graph_reg_gamma=gamma, graph_source=graph_source,
+            laplacian_normalise=normalise)
     lap_summary = _evaluate_by_bucket(lap, train, test_positive,
                                       bucket_of, k=k)
     print(f"  Laplacian (overall NDCG={lap_summary['overall']['ndcg']:.4f}) "
@@ -181,6 +183,8 @@ def run(dataset='ml-small', k=10,
             lap_val = lap_summary[bucket][metric]
             rows.append({
                 'dataset': dataset,
+                'graph_source': graph_source,
+                'normalise': normalise,
                 'bucket': bucket,
                 'n_users': base_summary[bucket]['n_users'],
                 'metric': metric,
@@ -191,7 +195,9 @@ def run(dataset='ml-small', k=10,
                             base_val if base_val > 0 else 0.0,
             })
     df = pd.DataFrame(rows)
-    csv_path = out_dir / f'head_tail_{dataset}.csv'
+    suffix = '_sym' if normalise == 'sym' else ''
+    src_suffix = f'_{graph_source}' if graph_source != 'rp3beta' else ''
+    csv_path = out_dir / f'head_tail_{dataset}{src_suffix}{suffix}.csv'
     df.to_csv(csv_path, index=False)
     print(f"\nSaved CSV to {csv_path}")
 
@@ -210,10 +216,11 @@ def run(dataset='ml-small', k=10,
                 ha='center', va='bottom' if h >= 0 else 'top', fontsize=9)
     ax.axhline(0, color='black', lw=0.8)
     ax.set_ylabel(f'Δ NDCG@{k}  (Laplacian − EASE)')
-    ax.set_title(f'Head vs tail gain — {dataset}')
+    title_extra = f' [sym L]' if normalise == 'sym' else ''
+    ax.set_title(f'Head vs tail gain — {dataset} ({graph_source}){title_extra}')
     ax.grid(True, axis='y', ls=':', alpha=0.5)
     fig.tight_layout()
-    png_path = out_dir / f'head_tail_{dataset}.png'
+    png_path = out_dir / f'head_tail_{dataset}{src_suffix}{suffix}.png'
     fig.savefig(png_path, dpi=140)
     plt.close(fig)
     print(f"Saved plot to {png_path}")
@@ -235,12 +242,16 @@ def main():
     p.add_argument('--lambda_', dest='ease_lambda', type=float, default=None)
     p.add_argument('--rp3_beta', type=float, default=0.6)
     p.add_argument('--graph_source', default='rp3beta')
+    p.add_argument('--normalise', default='none',
+                   choices=['none', 'sym'],
+                   help='Laplacian normalisation. Default: none.')
     p.add_argument('--n_buckets', type=int, default=3)
     args = p.parse_args()
 
     run(dataset=args.dataset, k=args.k,
         gamma=args.gamma, ease_lambda=args.ease_lambda,
         rp3_beta=args.rp3_beta, graph_source=args.graph_source,
+        normalise=args.normalise,
         n_buckets=args.n_buckets)
 
 

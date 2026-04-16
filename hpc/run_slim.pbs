@@ -26,9 +26,12 @@ export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=4
 export MKL_NUM_THREADS=4
 
+NORMALISE="${NORMALISE:-none}"
+
 python -m experiments.slim_experiments \
     --dataset ml-1m \
     --k 10 \
     --gammas "1,3,10,30,75" \
     --n_iter 150 \
-    --topK 200
+    --topK 200 \
+    --normalise "$NORMALISE"

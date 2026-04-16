@@ -37,6 +37,7 @@ def run(dataset='ml-small', k=10,
         ease_lambda=None, gammas=None,
         topK=200, sources=None,
         rp3_beta=0.6, p3_alpha=1.0, itemknn_shrink=0.0,
+        normalise='none',
         out_dir=None):
     if ease_lambda is None:
         ease_lambda = 500 if dataset == 'ml-1m' else 200
@@ -67,7 +68,7 @@ def run(dataset='ml-small', k=10,
     print(f"  NDCG={res_base['NDCG@k']:.4f}  ({dt_base:.1f}s)")
 
     for source in sources:
-        print(f"\n[source={source}]")
+        print(f"\n[source={source}]  normalise={normalise}")
         for gamma in gammas:
             t0 = time.time()
             model = HybridEASE_RP3beta()
@@ -77,12 +78,14 @@ def run(dataset='ml-small', k=10,
                       graph_reg_gamma=gamma,
                       graph_source=source,
                       p3_alpha=p3_alpha,
-                      itemknn_shrink=itemknn_shrink)
+                      itemknn_shrink=itemknn_shrink,
+                      laplacian_normalise=normalise)
             res = evaluate(model, train, test_positive, k=k)
             dt = time.time() - t0
             rows.append({
                 'dataset': dataset,
                 'source': source,
+                'normalise': normalise,
                 'ease_lambda': ease_lambda,
                 'gamma': gamma,
                 'rp3_beta': rp3_beta,
@@ -99,7 +102,8 @@ def run(dataset='ml-small', k=10,
                   f"HR={res['HitRate@k']:.4f}  ({dt:.1f}s)")
 
     df = pd.DataFrame(rows)
-    csv_path = out_dir / f'graph_source_ablation_{dataset}.csv'
+    suffix = '_sym' if normalise == 'sym' else ''
+    csv_path = out_dir / f'graph_source_ablation_{dataset}{suffix}.csv'
     df.to_csv(csv_path, index=False)
     print(f"\nSaved CSV to {csv_path}")
 
@@ -113,11 +117,12 @@ def run(dataset='ml-small', k=10,
     ax.set_xscale('log')
     ax.set_xlabel(r'$\gamma$ (Laplacian strength, log scale)')
     ax.set_ylabel(f'NDCG@{k}')
-    ax.set_title(f'Graph-source ablation — {dataset}')
+    title_extra = f' [sym L]' if normalise == 'sym' else ''
+    ax.set_title(f'Graph-source ablation — {dataset}{title_extra}')
     ax.grid(True, which='both', ls=':', alpha=0.5)
     ax.legend(frameon=False)
     fig.tight_layout()
-    png_path = out_dir / f'graph_source_ablation_{dataset}.png'
+    png_path = out_dir / f'graph_source_ablation_{dataset}{suffix}.png'
     fig.savefig(png_path, dpi=140)
     plt.close(fig)
     print(f"Saved plot to {png_path}")
@@ -143,6 +148,9 @@ def main():
     p.add_argument('--rp3_beta', type=float, default=0.6)
     p.add_argument('--sources', type=str, default=None,
                    help='Comma-separated list of graph sources to test')
+    p.add_argument('--normalise', default='none',
+                   choices=['none', 'sym'],
+                   help='Laplacian normalisation. Default: none.')
     args = p.parse_args()
 
     sources = None
@@ -151,7 +159,7 @@ def main():
 
     run(dataset=args.dataset, k=args.k, topK=args.topK,
         ease_lambda=args.ease_lambda, rp3_beta=args.rp3_beta,
-        sources=sources)
+        sources=sources, normalise=args.normalise)
 
 
 if __name__ == '__main__':

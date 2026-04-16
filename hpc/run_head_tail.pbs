@@ -23,6 +23,7 @@ GAMMA="${GAMMA:-75}"
 RP3_BETA="${RP3_BETA:-0.3}"
 GRAPH_SOURCE="${GRAPH_SOURCE:-rp3beta}"
 N_BUCKETS="${N_BUCKETS:-5}"
+NORMALISE="${NORMALISE:-none}"
 
 python -m experiments.head_tail_analysis \
     --dataset ml-1m \
@@ -31,4 +32,5 @@ python -m experiments.head_tail_analysis \
     --gamma "$GAMMA" \
     --rp3_beta "$RP3_BETA" \
     --graph_source "$GRAPH_SOURCE" \
+    --normalise "$NORMALISE" \
     --n_buckets "$N_BUCKETS"

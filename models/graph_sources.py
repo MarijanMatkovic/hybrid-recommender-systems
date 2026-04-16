@@ -117,18 +117,39 @@ def _binary_cooccurrence(X, topK=200, implicit=True):
     return W
 
 
-def build_laplacian(W):
+def build_laplacian(W, normalise='none'):
     """
-    Build an unnormalised graph Laplacian from a similarity matrix W.
+    Build a graph Laplacian from a similarity matrix W.
 
-    Symmetrises W (W_sym = (W + W^T) / 2), builds L = D - W_sym.
+    The matrix is first symmetrised:  W_sym = (W + W^T) / 2
+
+    Two variants are supported:
+
+    - ``normalise='none'`` (combinatorial / unnormalised Laplacian):
+          L = D - W_sym
+      where D = diag(d_i),  d_i = sum_j W_sym[i, j].
+      Eigenvalues lie in [0, 2 * max(d_i)] and are dominated by the
+      most-popular items. This is the "default" Laplacian used in our
+      original experiments.
+
+    - ``normalise='sym'`` (symmetric normalised Laplacian):
+          L = I - D^{-1/2} W_sym D^{-1/2}
+      Eigenvalues lie in [0, 2] regardless of the degree distribution,
+      so high-degree (popular) items no longer over-contribute to the
+      regulariser. This is the textbook fix for the head-bias / tail-
+      collapse problem and is what spectral clustering uses.
 
     Returns
     -------
     L : np.ndarray (dense, n_items x n_items)
-        The dense Laplacian. Callers needing memory efficiency should
-        process W directly; for our thesis-scale datasets dense L is fine.
+    degrees : np.ndarray (n_items,)
+        The raw row-sums of W_sym (not affected by ``normalise``).
+        Useful for downstream scaling and diagnostics.
     """
+    if normalise not in ('none', 'sym'):
+        raise ValueError(
+            f"Unknown normalise={normalise!r}; expected 'none' or 'sym'.")
+
     if sps.issparse(W):
         W_dense = W.toarray()
     else:
@@ -136,5 +157,22 @@ def build_laplacian(W):
 
     W_sym = (W_dense + W_dense.T) / 2.0
     degrees = W_sym.sum(axis=1)
-    L = np.diag(degrees) - W_sym
+
+    if normalise == 'none':
+        L = np.diag(degrees) - W_sym
+    else:  # 'sym'
+        # Avoid division by zero for isolated items (degree == 0).
+        d_safe = np.maximum(degrees, 1e-12)
+        d_inv_sqrt = 1.0 / np.sqrt(d_safe)
+        # L_sym = I - D^{-1/2} W_sym D^{-1/2}
+        # Compute the normalised similarity by broadcasting (no diag matmul).
+        W_norm = W_sym * d_inv_sqrt[:, None] * d_inv_sqrt[None, :]
+        L = np.eye(W_dense.shape[0], dtype=W_norm.dtype) - W_norm
+        # Isolated nodes (d_i = 0) should not contribute -- their row/col
+        # of L should be all zeros, not 1 on the diagonal.
+        isolated = degrees < 1e-12
+        if isolated.any():
+            L[isolated, :] = 0.0
+            L[:, isolated] = 0.0
+
     return L, degrees

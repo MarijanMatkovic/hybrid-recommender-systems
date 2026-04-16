@@ -32,6 +32,7 @@ from experiments._shared import ensure_results_dir, load_dataset
 
 def run(dataset='ml-small', k=10,
         gammas=None, lambdas=None, rp3_betas=None, rp3_topK=200,
+        graph_source='rp3beta', normalise='none',
         out_dir=None):
     if gammas is None:
         gammas = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0,
@@ -49,7 +50,8 @@ def run(dataset='ml-small', k=10,
     rows = []
     for lam in lambdas:
         for rp3_b in rp3_betas:
-            print(f"\n[gamma sweep] lambda={lam}, rp3_beta={rp3_b}")
+            print(f"\n[gamma sweep] lambda={lam}, rp3_beta={rp3_b}, "
+                  f"source={graph_source}, normalise={normalise}")
             for gamma in gammas:
                 t0 = time.time()
                 model = HybridEASE_RP3beta()
@@ -57,7 +59,8 @@ def run(dataset='ml-small', k=10,
                           ease_lambda=lam, rp3_alpha=1.0,
                           rp3_beta=rp3_b, rp3_topK=rp3_topK,
                           graph_reg_gamma=gamma,
-                          graph_source='rp3beta')
+                          graph_source=graph_source,
+                          laplacian_normalise=normalise)
                 res = evaluate(model, train, test_positive, k=k)
                 dt = time.time() - t0
                 rows.append({
@@ -65,6 +68,8 @@ def run(dataset='ml-small', k=10,
                     'lambda': lam,
                     'rp3_beta': rp3_b,
                     'rp3_topK': rp3_topK,
+                    'graph_source': graph_source,
+                    'normalise': normalise,
                     'gamma': gamma,
                     'NDCG@k': res['NDCG@k'],
                     'MAP@k': res['MAP@k'],
@@ -78,7 +83,8 @@ def run(dataset='ml-small', k=10,
                       f"HR={res['HitRate@k']:.4f}  ({dt:.1f}s)")
 
     df = pd.DataFrame(rows)
-    csv_path = out_dir / f'gamma_sensitivity_{dataset}.csv'
+    suffix = '_sym' if normalise == 'sym' else ''
+    csv_path = out_dir / f'gamma_sensitivity_{dataset}{suffix}.csv'
     df.to_csv(csv_path, index=False)
     print(f"\nSaved CSV to {csv_path}")
 
@@ -91,11 +97,12 @@ def run(dataset='ml-small', k=10,
     ax.set_xscale('log')
     ax.set_xlabel(r'$\gamma$ (Laplacian strength, log scale)')
     ax.set_ylabel(f'NDCG@{k}')
-    ax.set_title(f'Gamma sensitivity — {dataset}')
+    title_extra = f' [sym L]' if normalise == 'sym' else ''
+    ax.set_title(f'Gamma sensitivity — {dataset}{title_extra}')
     ax.grid(True, which='both', ls=':', alpha=0.5)
     ax.legend(frameon=False)
     fig.tight_layout()
-    png_path = out_dir / f'gamma_sensitivity_{dataset}.png'
+    png_path = out_dir / f'gamma_sensitivity_{dataset}{suffix}.png'
     fig.savefig(png_path, dpi=140)
     plt.close(fig)
     print(f"Saved plot to {png_path}")
@@ -110,13 +117,18 @@ def main():
     p.add_argument('--k', type=int, default=10)
     p.add_argument('--gammas', type=str, default=None,
                    help='Comma-separated gamma values (optional)')
+    p.add_argument('--graph_source', default='rp3beta')
+    p.add_argument('--normalise', default='none',
+                   choices=['none', 'sym'],
+                   help='Laplacian normalisation. Default: none.')
     args = p.parse_args()
 
     gammas = None
     if args.gammas:
         gammas = [float(x) for x in args.gammas.split(',')]
 
-    run(dataset=args.dataset, k=args.k, gammas=gammas)
+    run(dataset=args.dataset, k=args.k, gammas=gammas,
+        graph_source=args.graph_source, normalise=args.normalise)
 
 
 if __name__ == '__main__':

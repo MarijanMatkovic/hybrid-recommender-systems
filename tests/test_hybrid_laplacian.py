@@ -67,3 +67,46 @@ def test_hybrid_invalid_graph_source_raises(tiny_split):
         model.fit(train, method='laplacian', ease_lambda=50.0,
                   rp3_alpha=1.0, rp3_beta=0.6, rp3_topK=20,
                   graph_reg_gamma=1.0, graph_source='unknown')
+
+
+def test_hybrid_laplacian_sym_variant_runs(tiny_split):
+    """End-to-end smoke test: laplacian_normalise='sym' should train
+    without error and produce a finite B with zero diagonal.
+    """
+    train, _ = tiny_split
+    model = HybridEASE_RP3beta()
+    model.fit(train, method='laplacian', ease_lambda=50.0,
+              rp3_alpha=1.0, rp3_beta=0.6, rp3_topK=20,
+              graph_reg_gamma=5.0, graph_source='rp3beta',
+              laplacian_normalise='sym')
+    B = model.ease.B
+    assert np.isfinite(B).all()
+    assert np.allclose(np.diag(B), 0.0)
+
+
+def test_hybrid_laplacian_sym_vs_none_differ(tiny_split):
+    """With the same graph and gamma, 'sym' and 'none' normalisation
+    should yield different solutions (the whole point of the variant).
+    """
+    train, _ = tiny_split
+    common = dict(method='laplacian', ease_lambda=50.0,
+                  rp3_alpha=1.0, rp3_beta=0.6, rp3_topK=20,
+                  graph_reg_gamma=5.0, graph_source='rp3beta')
+
+    h_none = HybridEASE_RP3beta()
+    h_none.fit(train, laplacian_normalise='none', **common)
+
+    h_sym = HybridEASE_RP3beta()
+    h_sym.fit(train, laplacian_normalise='sym', **common)
+
+    assert np.abs(h_none.ease.B - h_sym.ease.B).sum() > 1e-6
+
+
+def test_hybrid_laplacian_invalid_normalise_raises(tiny_split):
+    train, _ = tiny_split
+    model = HybridEASE_RP3beta()
+    with pytest.raises(ValueError):
+        model.fit(train, method='laplacian', ease_lambda=50.0,
+                  rp3_alpha=1.0, rp3_beta=0.6, rp3_topK=20,
+                  graph_reg_gamma=1.0, graph_source='rp3beta',
+                  laplacian_normalise='row')

@@ -17,7 +17,16 @@ source hpc/_prologue.sh
 # Wide log-scaled grid. The previous overnight sweep found the optimum
 # around gamma=50-75 for ml-1m, so we cover an order of magnitude on
 # either side.
+#
+# Override NORMALISE=sym at submit time to run with the symmetric
+# normalised Laplacian variant.
+NORMALISE="${NORMALISE:-none}"
+GRAPH_SOURCE="${GRAPH_SOURCE:-rp3beta}"
+GAMMAS="${GAMMAS:-0.1,0.3,1,3,10,30,50,75,100,200,500,1000}"
+
 python -m experiments.gamma_sensitivity \
     --dataset ml-1m \
     --k 10 \
-    --gammas "0.1,0.3,1,3,10,30,50,75,100,200,500,1000"
+    --gammas "$GAMMAS" \
+    --graph_source "$GRAPH_SOURCE" \
+    --normalise "$NORMALISE"
