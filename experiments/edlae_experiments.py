@@ -30,7 +30,11 @@ from evaluation.metrics import evaluate_at_ks
 from models import EDLAE, build_graph, build_laplacian
 from models.hybrid import HybridEASE_RP3beta
 
-from experiments._shared import ensure_results_dir, load_dataset
+from experiments._shared import (
+    ensure_results_dir,
+    load_dataset,
+    wilcoxon_vs_baseline,
+)
 
 
 class _StandaloneWrapper:
@@ -103,6 +107,12 @@ def run(dataset='ml-small', k=10,
     _row['MAP@k']     = res_ease[f'MAP@{k}']
     _row['HitRate@k'] = res_ease[f'HitRate@{k}']
     _row['Recall@k']  = res_ease[f'Recall@{k}']
+    # EASE is the baseline in this script -- its own row carries a
+    # nan/0 Wilcoxon triple so the column schema is identical for
+    # every row.
+    _row['wilcoxon_stat_vs_EASE']    = float('nan')
+    _row['wilcoxon_p_vs_EASE']       = float('nan')
+    _row['wilcoxon_n_pairs_vs_EASE'] = 0
     rows.append(_row)
 
     # ---- 2) Vanilla EDLAE sweep over dropout ----
@@ -116,9 +126,10 @@ def run(dataset='ml-small', k=10,
         t = time.time() - t0
         res = evaluate_at_ks(_StandaloneWrapper(edlae), train,
                              test_positive, ks=ks)
+        w_stat, w_p, w_n = wilcoxon_vs_baseline(res_ease, res, k=k)
         print(f"  NDCG@{k}={res[f'NDCG@{k}']:.4f} "
               f"NDCG@{max(ks)}={res[f'NDCG@{max(ks)}']:.4f} "
-              f"({t:.1f}s)")
+              f"p(vs EASE)={w_p:.2e}  ({t:.1f}s)")
         _row = {
             'dataset': dataset,
             'model': 'EDLAE',
@@ -135,6 +146,9 @@ def run(dataset='ml-small', k=10,
         _row['MAP@k']     = res[f'MAP@{k}']
         _row['HitRate@k'] = res[f'HitRate@{k}']
         _row['Recall@k']  = res[f'Recall@{k}']
+        _row['wilcoxon_stat_vs_EASE']    = w_stat
+        _row['wilcoxon_p_vs_EASE']       = w_p
+        _row['wilcoxon_n_pairs_vs_EASE'] = w_n
         rows.append(_row)
         if (best_edlae_res is None
                 or res[f'NDCG@{k}'] > best_edlae_res[f'NDCG@{k}']):
@@ -167,9 +181,10 @@ def run(dataset='ml-small', k=10,
         t = time.time() - t0
         res = evaluate_at_ks(_StandaloneWrapper(edlae_lap), train,
                              test_positive, ks=ks)
+        w_stat, w_p, w_n = wilcoxon_vs_baseline(res_ease, res, k=k)
         print(f"  NDCG@{k}={res[f'NDCG@{k}']:.4f} "
               f"NDCG@{max(ks)}={res[f'NDCG@{max(ks)}']:.4f} "
-              f"({t:.1f}s)")
+              f"p(vs EASE)={w_p:.2e}  ({t:.1f}s)")
         _row = {
             'dataset': dataset,
             'model': 'EDLAE-Laplacian',
@@ -186,6 +201,9 @@ def run(dataset='ml-small', k=10,
         _row['MAP@k']     = res[f'MAP@{k}']
         _row['HitRate@k'] = res[f'HitRate@{k}']
         _row['Recall@k']  = res[f'Recall@{k}']
+        _row['wilcoxon_stat_vs_EASE']    = w_stat
+        _row['wilcoxon_p_vs_EASE']       = w_p
+        _row['wilcoxon_n_pairs_vs_EASE'] = w_n
         rows.append(_row)
 
     df = pd.DataFrame(rows)

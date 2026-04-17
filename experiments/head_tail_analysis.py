@@ -50,16 +50,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-try:  # scipy is a hard dependency already, but guard anyway
-    from scipy.stats import wilcoxon
-    _HAVE_WILCOXON = True
-except Exception:  # pragma: no cover
-    _HAVE_WILCOXON = False
-
 from evaluation.metrics import ndcg_at_k, recall_at_k, hit_rate_at_k
 from models import HybridEASE_RP3beta
 
-from experiments._shared import ensure_results_dir, load_dataset
+from experiments._shared import (
+    ensure_results_dir,
+    load_dataset,
+    wilcoxon_paired,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -230,41 +228,9 @@ def _evaluate_by_bucket(model, train_df, test_df, bucket_of, k=10,
     return summary, per_user_ndcg
 
 
-def _wilcoxon_paired(baseline_per_user, model_per_user):
-    """Paired Wilcoxon signed-rank on NDCG, aligned by user_id.
-
-    Each arg is the ``(values, user_ids)`` pair returned by
-    ``_evaluate_by_bucket`` for one bucket. We intersect on user_id so
-    the test is genuinely paired.
-
-    Returns ``(stat, pvalue, n_pairs)`` or ``(nan, nan, 0)`` when the
-    overlap is too small or all differences are zero.
-    """
-    if not _HAVE_WILCOXON:
-        return (float('nan'), float('nan'), 0)
-
-    base_vals, base_users = baseline_per_user
-    mod_vals,  mod_users  = model_per_user
-
-    # Intersect on user id to form paired samples.
-    base_map = dict(zip(base_users, base_vals))
-    mod_map = dict(zip(mod_users, mod_vals))
-    common = sorted(set(base_map) & set(mod_map))
-    if len(common) < 2:
-        return (float('nan'), float('nan'), len(common))
-
-    b = np.array([base_map[u] for u in common], dtype=float)
-    m = np.array([mod_map[u]  for u in common], dtype=float)
-    diff = m - b
-    if not np.any(diff != 0):
-        # wilcoxon would raise -- return a sentinel p=1 (no evidence).
-        return (0.0, 1.0, len(common))
-    try:
-        stat, p = wilcoxon(m, b, zero_method='wilcox',
-                           alternative='two-sided')
-    except Exception:
-        return (float('nan'), float('nan'), len(common))
-    return (float(stat), float(p), int(len(common)))
+# Back-compat alias -- the canonical helper now lives in
+# experiments/_shared.py and is used by all experiment scripts.
+_wilcoxon_paired = wilcoxon_paired
 
 
 # ---------------------------------------------------------------------------

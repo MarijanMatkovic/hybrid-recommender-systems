@@ -33,7 +33,11 @@ from evaluation.metrics import evaluate_at_ks
 from models import SLIM, build_graph, build_laplacian
 from models.hybrid import HybridEASE_RP3beta
 
-from experiments._shared import ensure_results_dir, load_dataset
+from experiments._shared import (
+    ensure_results_dir,
+    load_dataset,
+    wilcoxon_vs_baseline,
+)
 
 
 class _StandaloneWrapper:
@@ -92,6 +96,13 @@ def run(dataset='ml-small', k=10,
     _row['MAP@k']     = res_slim[f'MAP@{k}']
     _row['HitRate@k'] = res_slim[f'HitRate@{k}']
     _row['Recall@k']  = res_slim[f'Recall@{k}']
+    # SLIM is the main baseline in this script.
+    _row['wilcoxon_stat_vs_SLIM']    = float('nan')
+    _row['wilcoxon_p_vs_SLIM']       = float('nan')
+    _row['wilcoxon_n_pairs_vs_SLIM'] = 0
+    _row['wilcoxon_stat_vs_EASE']    = float('nan')
+    _row['wilcoxon_p_vs_EASE']       = float('nan')
+    _row['wilcoxon_n_pairs_vs_EASE'] = 0
     rows.append(_row)
 
     # ---- 2) EASE reference (same data) ----
@@ -119,6 +130,14 @@ def run(dataset='ml-small', k=10,
     _row['MAP@k']     = res_ease[f'MAP@{k}']
     _row['HitRate@k'] = res_ease[f'HitRate@{k}']
     _row['Recall@k']  = res_ease[f'Recall@{k}']
+    # EASE vs SLIM: paired test over common users.
+    w_stat, w_p, w_n = wilcoxon_vs_baseline(res_slim, res_ease, k=k)
+    _row['wilcoxon_stat_vs_SLIM']    = w_stat
+    _row['wilcoxon_p_vs_SLIM']       = w_p
+    _row['wilcoxon_n_pairs_vs_SLIM'] = w_n
+    _row['wilcoxon_stat_vs_EASE']    = float('nan')
+    _row['wilcoxon_p_vs_EASE']       = float('nan')
+    _row['wilcoxon_n_pairs_vs_EASE'] = 0
     rows.append(_row)
 
     # ---- 3) Build Laplacian once ----
@@ -142,9 +161,14 @@ def run(dataset='ml-small', k=10,
         t = time.time() - t0
         res = evaluate_at_ks(_StandaloneWrapper(slim_lap), train,
                              test_positive, ks=ks)
+        w_stat_slim, w_p_slim, w_n_slim = wilcoxon_vs_baseline(
+            res_slim, res, k=k)
+        w_stat_ease, w_p_ease, w_n_ease = wilcoxon_vs_baseline(
+            res_ease, res, k=k)
         print(f"  NDCG@{k}={res[f'NDCG@{k}']:.4f} "
               f"NDCG@{max(ks)}={res[f'NDCG@{max(ks)}']:.4f} "
-              f"({t:.1f}s)")
+              f"p(vs SLIM)={w_p_slim:.2e} "
+              f"p(vs EASE)={w_p_ease:.2e}  ({t:.1f}s)")
         _row = {
             'dataset': dataset, 'model': 'SLIM-Laplacian',
             'gamma': gamma, 'graph_source': graph_source,
@@ -157,6 +181,12 @@ def run(dataset='ml-small', k=10,
         _row['MAP@k']     = res[f'MAP@{k}']
         _row['HitRate@k'] = res[f'HitRate@{k}']
         _row['Recall@k']  = res[f'Recall@{k}']
+        _row['wilcoxon_stat_vs_SLIM']    = w_stat_slim
+        _row['wilcoxon_p_vs_SLIM']       = w_p_slim
+        _row['wilcoxon_n_pairs_vs_SLIM'] = w_n_slim
+        _row['wilcoxon_stat_vs_EASE']    = w_stat_ease
+        _row['wilcoxon_p_vs_EASE']       = w_p_ease
+        _row['wilcoxon_n_pairs_vs_EASE'] = w_n_ease
         rows.append(_row)
 
     df = pd.DataFrame(rows)

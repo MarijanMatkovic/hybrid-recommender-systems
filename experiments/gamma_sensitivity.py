@@ -27,7 +27,11 @@ import pandas as pd
 from evaluation.metrics import evaluate_at_ks
 from models import HybridEASE_RP3beta
 
-from experiments._shared import ensure_results_dir, load_dataset
+from experiments._shared import (
+    ensure_results_dir,
+    load_dataset,
+    wilcoxon_vs_baseline,
+)
 
 
 def run(dataset='ml-small', k=10,
@@ -51,7 +55,30 @@ def run(dataset='ml-small', k=10,
     train, test_positive, _ = load_dataset(dataset)
 
     rows = []
+    # Per-lambda EASE baseline (no Laplacian): used as the reference model
+    # for the paired Wilcoxon signed-rank test on per-user NDCG@k. rp3_beta
+    # has no effect on pure EASE, so we fit it once per lambda.
+    baselines = {}
     for lam in lambdas:
+        print(f"\n[baseline] EASE lambda={lam} (no Laplacian)")
+        t0 = time.time()
+        base = HybridEASE_RP3beta()
+        base.fit(train, method='score', fusion_alpha=1.0,
+                 ease_lambda=lam, rp3_alpha=1.0,
+                 rp3_beta=rp3_betas[0], rp3_topK=rp3_topK)
+        # fusion_alpha=1.0 reduces to EASE after min-max normalisation;
+        # evaluate via pure X @ B to stay apples-to-apples with the
+        # Laplacian-EASE scoring.
+        base.pred = base.ease.X.dot(base.ease.B)
+        res_base = evaluate_at_ks(base, train, test_positive, ks=ks)
+        dt_base = time.time() - t0
+        print(f"  NDCG@{k}={res_base[f'NDCG@{k}']:.4f} "
+              f"NDCG@{max(ks)}={res_base[f'NDCG@{max(ks)}']:.4f} "
+              f"({dt_base:.1f}s)")
+        baselines[lam] = res_base
+
+    for lam in lambdas:
+        res_base = baselines[lam]
         for rp3_b in rp3_betas:
             print(f"\n[gamma sweep] lambda={lam}, rp3_beta={rp3_b}, "
                   f"source={graph_source}, normalise={normalise}")
@@ -66,6 +93,7 @@ def run(dataset='ml-small', k=10,
                           laplacian_normalise=normalise)
                 res = evaluate_at_ks(model, train, test_positive, ks=ks)
                 dt = time.time() - t0
+                w_stat, w_p, w_n = wilcoxon_vs_baseline(res_base, res, k=k)
                 row = {
                     'dataset': dataset,
                     'lambda': lam,
@@ -84,11 +112,15 @@ def run(dataset='ml-small', k=10,
                 row['MAP@k']     = res[f'MAP@{k}']
                 row['HitRate@k'] = res[f'HitRate@{k}']
                 row['Recall@k']  = res[f'Recall@{k}']
+                row['wilcoxon_stat_vs_EASE']    = w_stat
+                row['wilcoxon_p_vs_EASE']       = w_p
+                row['wilcoxon_n_pairs_vs_EASE'] = w_n
                 rows.append(row)
                 print(f"  gamma={gamma:<8.3f} "
                       f"NDCG@{k}={res[f'NDCG@{k}']:.4f} "
                       f"NDCG@{max(ks)}={res[f'NDCG@{max(ks)}']:.4f} "
-                      f"HR@{k}={res[f'HitRate@{k}']:.4f}  ({dt:.1f}s)")
+                      f"HR@{k}={res[f'HitRate@{k}']:.4f} "
+                      f"p(vs EASE)={w_p:.2e}  ({dt:.1f}s)")
 
     df = pd.DataFrame(rows)
     suffix = '_sym' if normalise == 'sym' else ''
