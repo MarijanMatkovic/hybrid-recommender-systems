@@ -151,13 +151,13 @@ submit hpc/run_head_tail_gamma.pbs \
     "head-tail γ-sweep RP3β [none]" \
     lap_ht_gamma_rp3_none \
     logs/head_tail_gamma_rp3_none.log \
-    -v EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=none,N_BUCKETS=5,BUCKET_BY=item_popularity,GAMMAS="0,3,10,30,50,75"
+    -v EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=none,N_BUCKETS=5,BUCKET_BY=item_popularity,GAMMAS="'0,3,10,30,50,75'"
 
 submit hpc/run_head_tail_gamma.pbs \
     "head-tail γ-sweep RP3β [sym]" \
     lap_ht_gamma_rp3_sym \
     logs/head_tail_gamma_rp3_sym.log \
-    -v EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=sym,N_BUCKETS=5,BUCKET_BY=item_popularity,GAMMAS="0,3,10,30,50,75"
+    -v EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=sym,N_BUCKETS=5,BUCKET_BY=item_popularity,GAMMAS="'0,3,10,30,50,75'"
 
 echo ""
 echo ">>> Head/tail gamma sweep (user-activity buckets — bucket audit)"
@@ -166,13 +166,13 @@ submit hpc/run_head_tail_gamma.pbs \
     "head-tail γ-sweep user-act [none]" \
     lap_ht_gamma_user_none \
     logs/head_tail_gamma_user_none.log \
-    -v EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=none,N_BUCKETS=5,BUCKET_BY=user_activity,GAMMAS="0,3,10,30,50,75"
+    -v EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=none,N_BUCKETS=5,BUCKET_BY=user_activity,GAMMAS="'0,3,10,30,50,75'"
 
 submit hpc/run_head_tail_gamma.pbs \
     "head-tail γ-sweep user-act [sym]" \
     lap_ht_gamma_user_sym \
     logs/head_tail_gamma_user_sym.log \
-    -v EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=sym,N_BUCKETS=5,BUCKET_BY=user_activity,GAMMAS="0,3,10,30,50,75"
+    -v EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=sym,N_BUCKETS=5,BUCKET_BY=user_activity,GAMMAS="'0,3,10,30,50,75'"
 
 # ---------------------------------------------------------------------
 # Priority 8 — Multi-seed EDLAE for mean ± std CIs. Since EDLAE's
@@ -211,13 +211,13 @@ submit hpc/run_b_matrix_analysis.pbs \
     "B-matrix diagnostics [none]" \
     lap_b_matrix_none \
     logs/b_matrix_none.log \
-    -v DATASET=ml-1m,EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=none,GAMMAS="0,1,3,10,30,50,100,300,1000"
+    -v DATASET=ml-1m,EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=none,GAMMAS="'0,1,3,10,30,50,100,300,1000'"
 
 submit hpc/run_b_matrix_analysis.pbs \
     "B-matrix diagnostics [sym]" \
     lap_b_matrix_sym \
     logs/b_matrix_sym.log \
-    -v DATASET=ml-1m,EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=sym,GAMMAS="0,1,3,10,30,50,100,300,1000"
+    -v DATASET=ml-1m,EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=sym,GAMMAS="'0,1,3,10,30,50,100,300,1000'"
 
 # ---------------------------------------------------------------------
 # Priority 10 — Multi-seed EDLAE on ML-1M (the VALIDATION run). The
@@ -235,7 +235,7 @@ submit hpc/run_edlae_multiseed_ml1m.pbs \
     "EDLAE multi-seed ml-1m [sym]" \
     lap_edlae_multi_ml1m_sym \
     logs/edlae_multiseed_ml1m_sym.log \
-    -v N_SEEDS=5,DROPOUT=0.75,GAMMAS="1,3,10",LAMBDA_=500,GRAPH_SOURCE=rp3beta,RP3_BETA=0.3,NORMALISE=sym
+    -v N_SEEDS=5,DROPOUT=0.75,GAMMAS="'1,3,10'",LAMBDA_=500,GRAPH_SOURCE=rp3beta,RP3_BETA=0.3,NORMALISE=sym
 
 # ---------------------------------------------------------------------
 # Priority 11 — Head/tail γ sweep on the ItemKNN graph with SYM.
@@ -252,7 +252,7 @@ submit hpc/run_head_tail_gamma.pbs \
     "head-tail γ-sweep ItemKNN [sym]" \
     lap_ht_gamma_iknn_sym \
     logs/head_tail_gamma_iknn_sym.log \
-    -v EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=itemknn,NORMALISE=sym,N_BUCKETS=5,BUCKET_BY=item_popularity,GAMMAS="3,10,30,50,75,100"
+    -v EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=itemknn,NORMALISE=sym,N_BUCKETS=5,BUCKET_BY=item_popularity,GAMMAS="'3,10,30,50,75,100'"
 
 # ---------------------------------------------------------------------
 # Priority 12 — SLIM sym follow-up. The previous SLIM sym sweep peaked
@@ -267,7 +267,7 @@ submit hpc/run_slim.pbs \
     "SLIM sweep [sym, extended γ]" \
     lap_slim_sym_ext \
     logs/slim_sym_ext.log \
-    -v NORMALISE=sym,GAMMAS="10,30,75,100,150,200"
+    -v NORMALISE=sym,GAMMAS="'10,30,75,100,150,200'"
 
 echo ""
 echo "============================================================"
