@@ -10,14 +10,34 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from data import load_movielens, load_movielens_1m, temporal_train_test_split
+from data import (
+    load_movielens,
+    load_movielens_1m,
+    temporal_train_test_split,
+    random_train_test_split,
+)
 
 
 DEFAULT_RESULTS_DIR = Path('results')
 
 
-def load_dataset(dataset: str):
-    """Load ratings + perform a temporal 80/20 split.
+def load_dataset(dataset: str, split_mode: str = 'temporal',
+                 split_seed: int = 0, test_ratio: float = 0.2):
+    """Load ratings + perform an 80/20 split.
+
+    Parameters
+    ----------
+    dataset : {'ml-small', 'ml-1m'}
+    split_mode : {'temporal', 'random'}
+        'temporal' (default, deterministic) uses each user's most recent
+        interactions for test, matching the protocol from Steck's EASE
+        paper. 'random' picks a per-user random subset using ``split_seed``
+        -- used by the multi-seed experiments to report mean ± std across
+        several splits.
+    split_seed : int
+        Only used when ``split_mode='random'``.
+    test_ratio : float
+        Fraction of each user's interactions in the held-out set.
 
     Returns
     -------
@@ -32,7 +52,18 @@ def load_dataset(dataset: str):
                                     min_interactions=5)
         threshold = 3.5
 
-    train, test = temporal_train_test_split(ratings, test_ratio=0.2)
+    if split_mode == 'temporal':
+        train, test = temporal_train_test_split(ratings,
+                                                test_ratio=test_ratio)
+    elif split_mode == 'random':
+        train, test = random_train_test_split(ratings,
+                                              test_ratio=test_ratio,
+                                              seed=split_seed)
+    else:
+        raise ValueError(
+            f"Unknown split_mode={split_mode!r}; "
+            "expected 'temporal' or 'random'.")
+
     test_positive = test[test['rating'] >= threshold].copy()
 
     return train, test_positive, threshold

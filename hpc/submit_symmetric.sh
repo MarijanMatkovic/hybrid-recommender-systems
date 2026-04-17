@@ -136,6 +136,66 @@ submit hpc/run_slim.pbs \
     logs/slim_sym.log \
     -v NORMALISE=sym
 
+# ---------------------------------------------------------------------
+# Priority 7 — Head/tail GAMMA SWEEP. This is the missing diagnostic:
+# per-bucket NDCG gain as a function of gamma, on the same axes. Four
+# variants so we can tell whether the head/tail tradeoff is monotonic
+# in gamma, whether symmetric normalisation flips the curve, and
+# whether user_activity buckets tell a different story than
+# item_popularity (e.g. diagnosing the q5=0 NDCG mystery).
+# ---------------------------------------------------------------------
+echo ""
+echo ">>> Head/tail gamma sweep (item-popularity buckets)"
+
+submit hpc/run_head_tail_gamma.pbs \
+    "head-tail γ-sweep RP3β [none]" \
+    lap_ht_gamma_rp3_none \
+    logs/head_tail_gamma_rp3_none.log \
+    -v EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=none,N_BUCKETS=5,BUCKET_BY=item_popularity,GAMMAS="0,3,10,30,50,75"
+
+submit hpc/run_head_tail_gamma.pbs \
+    "head-tail γ-sweep RP3β [sym]" \
+    lap_ht_gamma_rp3_sym \
+    logs/head_tail_gamma_rp3_sym.log \
+    -v EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=sym,N_BUCKETS=5,BUCKET_BY=item_popularity,GAMMAS="0,3,10,30,50,75"
+
+echo ""
+echo ">>> Head/tail gamma sweep (user-activity buckets — bucket audit)"
+
+submit hpc/run_head_tail_gamma.pbs \
+    "head-tail γ-sweep user-act [none]" \
+    lap_ht_gamma_user_none \
+    logs/head_tail_gamma_user_none.log \
+    -v EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=none,N_BUCKETS=5,BUCKET_BY=user_activity,GAMMAS="0,3,10,30,50,75"
+
+submit hpc/run_head_tail_gamma.pbs \
+    "head-tail γ-sweep user-act [sym]" \
+    lap_ht_gamma_user_sym \
+    logs/head_tail_gamma_user_sym.log \
+    -v EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=sym,N_BUCKETS=5,BUCKET_BY=user_activity,GAMMAS="0,3,10,30,50,75"
+
+# ---------------------------------------------------------------------
+# Priority 8 — Multi-seed EDLAE for mean ± std CIs. Since EDLAE's
+# closed-form is deterministic given the training matrix, the variance
+# comes entirely from the train/test split. 5 seeds is enough for
+# tight 95% CIs; running both NORMALISE values so the paper can report
+# EASE / EDLAE / EDLAE-Lap[none] / EDLAE-Lap[sym] side by side.
+# ---------------------------------------------------------------------
+echo ""
+echo ">>> Multi-seed EDLAE (mean ± std over random splits)"
+
+submit hpc/run_edlae_multiseed.pbs \
+    "EDLAE multi-seed [none]" \
+    lap_edlae_multiseed_none \
+    logs/edlae_multiseed_none.log \
+    -v N_SEEDS=5,DROPOUT=0.5,GAMMA=50,LAMBDA_=500,GRAPH_SOURCE=rp3beta,RP3_BETA=0.3,NORMALISE=none
+
+submit hpc/run_edlae_multiseed.pbs \
+    "EDLAE multi-seed [sym]" \
+    lap_edlae_multiseed_sym \
+    logs/edlae_multiseed_sym.log \
+    -v N_SEEDS=5,DROPOUT=0.5,GAMMA=50,LAMBDA_=500,GRAPH_SOURCE=rp3beta,RP3_BETA=0.3,NORMALISE=sym
+
 echo ""
 echo "============================================================"
 echo "  All sym-variant jobs submitted. Monitor with:"
@@ -144,4 +204,7 @@ echo "    qstat -u \$USER"
 echo "    tail -f logs/head_tail_rp3_sym.log"
 echo ""
 echo "  Results land under results/<exp>/*_sym.csv and .png"
+echo "  New diagnostics:"
+echo "    - results/head_tail_analysis/head_tail_gamma_sweep_*.{csv,png}"
+echo "    - results/edlae_multiseed/edlae_multiseed_*_summary.csv"
 echo "============================================================"

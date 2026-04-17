@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from evaluation.metrics import evaluate
+from evaluation.metrics import evaluate_at_ks
 from models import HybridEASE_RP3beta
 from models.graph_sources import VALID_SOURCES
 
@@ -37,7 +37,7 @@ def run(dataset='ml-small', k=10,
         ease_lambda=None, gammas=None,
         topK=200, sources=None,
         rp3_beta=0.6, p3_alpha=1.0, itemknn_shrink=0.0,
-        normalise='none',
+        normalise='none', ks=(10, 20),
         out_dir=None):
     if ease_lambda is None:
         ease_lambda = 500 if dataset == 'ml-1m' else 200
@@ -45,6 +45,7 @@ def run(dataset='ml-small', k=10,
         gammas = [0.3, 1.0, 3.0, 10.0, 30.0, 100.0]
     if sources is None:
         sources = list(VALID_SOURCES)
+    ks = tuple(sorted(set(list(ks) + [k])))
 
     out_dir = ensure_results_dir('graph_source_ablation'
                                  if out_dir is None else out_dir)
@@ -63,9 +64,11 @@ def run(dataset='ml-small', k=10,
     # normalisation. To stay apples-to-apples, evaluate via the plain EASE
     # prediction ``X @ B``.
     base.pred = base.ease.X.dot(base.ease.B)
-    res_base = evaluate(base, train, test_positive, k=k)
+    res_base = evaluate_at_ks(base, train, test_positive, ks=ks)
     dt_base = time.time() - t0
-    print(f"  NDCG={res_base['NDCG@k']:.4f}  ({dt_base:.1f}s)")
+    print(f"  NDCG@{k}={res_base[f'NDCG@{k}']:.4f} "
+          f"NDCG@{max(ks)}={res_base[f'NDCG@{max(ks)}']:.4f} "
+          f"({dt_base:.1f}s)")
 
     for source in sources:
         print(f"\n[source={source}]  normalise={normalise}")
@@ -80,9 +83,9 @@ def run(dataset='ml-small', k=10,
                       p3_alpha=p3_alpha,
                       itemknn_shrink=itemknn_shrink,
                       laplacian_normalise=normalise)
-            res = evaluate(model, train, test_positive, k=k)
+            res = evaluate_at_ks(model, train, test_positive, ks=ks)
             dt = time.time() - t0
-            rows.append({
+            row = {
                 'dataset': dataset,
                 'source': source,
                 'normalise': normalise,
@@ -90,16 +93,20 @@ def run(dataset='ml-small', k=10,
                 'gamma': gamma,
                 'rp3_beta': rp3_beta,
                 'topK': topK,
-                'NDCG@k': res['NDCG@k'],
-                'MAP@k': res['MAP@k'],
-                'HitRate@k': res['HitRate@k'],
-                'Recall@k': res['Recall@k'],
                 'train_time_s': dt,
-            })
+            }
+            for kk in ks:
+                for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
+                    row[f'{m}@{kk}'] = res[f'{m}@{kk}']
+            row['NDCG@k']    = res[f'NDCG@{k}']
+            row['MAP@k']     = res[f'MAP@{k}']
+            row['HitRate@k'] = res[f'HitRate@{k}']
+            row['Recall@k']  = res[f'Recall@{k}']
+            rows.append(row)
             print(f"  gamma={gamma:<6.2f} "
-                  f"NDCG={res['NDCG@k']:.4f} "
-                  f"MAP={res['MAP@k']:.4f} "
-                  f"HR={res['HitRate@k']:.4f}  ({dt:.1f}s)")
+                  f"NDCG@{k}={res[f'NDCG@{k}']:.4f} "
+                  f"NDCG@{max(ks)}={res[f'NDCG@{max(ks)}']:.4f} "
+                  f"HR@{k}={res[f'HitRate@{k}']:.4f}  ({dt:.1f}s)")
 
     df = pd.DataFrame(rows)
     suffix = '_sym' if normalise == 'sym' else ''
@@ -112,8 +119,8 @@ def run(dataset='ml-small', k=10,
     for src, g in df.groupby('source'):
         g = g.sort_values('gamma')
         ax.plot(g['gamma'], g['NDCG@k'], marker='o', label=src)
-    ax.axhline(res_base['NDCG@k'], ls='--', color='grey',
-               label=f"EASE baseline ({res_base['NDCG@k']:.4f})")
+    ax.axhline(res_base[f'NDCG@{k}'], ls='--', color='grey',
+               label=f"EASE baseline ({res_base[f'NDCG@{k}']:.4f})")
     ax.set_xscale('log')
     ax.set_xlabel(r'$\gamma$ (Laplacian strength, log scale)')
     ax.set_ylabel(f'NDCG@{k}')
@@ -151,15 +158,21 @@ def main():
     p.add_argument('--normalise', default='none',
                    choices=['none', 'sym'],
                    help='Laplacian normalisation. Default: none.')
+    p.add_argument('--ks', type=str, default='10,20',
+                   help='Comma-separated list of cut-offs for multi-k '
+                        'evaluation (NDCG@10, NDCG@20, ...). '
+                        'Default: "10,20".')
     args = p.parse_args()
 
     sources = None
     if args.sources:
         sources = [s.strip() for s in args.sources.split(',')]
 
+    ks = tuple(int(x) for x in args.ks.split(',') if x.strip())
+
     run(dataset=args.dataset, k=args.k, topK=args.topK,
         ease_lambda=args.ease_lambda, rp3_beta=args.rp3_beta,
-        sources=sources, normalise=args.normalise)
+        sources=sources, normalise=args.normalise, ks=ks)
 
 
 if __name__ == '__main__':

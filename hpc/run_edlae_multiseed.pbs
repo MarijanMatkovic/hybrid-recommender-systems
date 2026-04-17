@@ -1,0 +1,48 @@
+#!/bin/bash
+# =====================================================================
+# Multi-seed EDLAE vs Laplacian-EDLAE on ml-1m.
+#
+# EDLAE is closed-form deterministic given the training matrix, so
+# variance across runs comes from the train/test split -- this job
+# repeats EASE / EDLAE / Laplacian-EDLAE across N random per-user
+# splits and reports mean ± std. ml-1m takes ~1-2 min per split for
+# closed-form models, so 5 seeds x 3 models is easily under an hour.
+#
+# Override on submit, e.g.:
+#     qsub -v N_SEEDS=5,DROPOUT=0.5,GAMMA=50 hpc/run_edlae_multiseed.pbs
+# =====================================================================
+#PBS -N lap_edlae_multiseed
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+#PBS -o logs/edlae_multiseed.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+N_SEEDS="${N_SEEDS:-5}"
+DROPOUT="${DROPOUT:-0.5}"
+GAMMA="${GAMMA:-50}"
+GRAPH_SOURCE="${GRAPH_SOURCE:-rp3beta}"
+RP3_BETA="${RP3_BETA:-0.3}"
+LAMBDA_="${LAMBDA_:-500}"
+NORMALISE="${NORMALISE:-none}"
+
+# Optional explicit seed list overrides N_SEEDS if set, e.g. "0,1,2,7,13".
+SPLIT_SEEDS_ARG=""
+if [[ -n "${SPLIT_SEEDS:-}" ]]; then
+    SPLIT_SEEDS_ARG="--split_seeds $SPLIT_SEEDS"
+fi
+
+python -m experiments.edlae_multiseed \
+    --dataset ml-1m \
+    --k 10 \
+    --lambda_ "$LAMBDA_" \
+    --dropout "$DROPOUT" \
+    --gamma "$GAMMA" \
+    --graph_source "$GRAPH_SOURCE" \
+    --rp3_beta "$RP3_BETA" \
+    --normalise "$NORMALISE" \
+    --n_seeds "$N_SEEDS" \
+    $SPLIT_SEEDS_ARG

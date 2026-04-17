@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from evaluation.metrics import evaluate
+from evaluation.metrics import evaluate_at_ks
 from models import HybridEASE_RP3beta
 
 from experiments._shared import ensure_results_dir, load_dataset
@@ -33,6 +33,7 @@ from experiments._shared import ensure_results_dir, load_dataset
 def run(dataset='ml-small', k=10,
         gammas=None, lambdas=None, rp3_betas=None, rp3_topK=200,
         graph_source='rp3beta', normalise='none',
+        ks=(10, 20),
         out_dir=None):
     if gammas is None:
         gammas = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0,
@@ -41,6 +42,8 @@ def run(dataset='ml-small', k=10,
         lambdas = [100, 500] if dataset == 'ml-1m' else [50, 200]
     if rp3_betas is None:
         rp3_betas = [0.3, 0.6]
+    # Guarantee the "primary" k (used by the plot) is one of the cut-offs.
+    ks = tuple(sorted(set(list(ks) + [k])))
 
     out_dir = ensure_results_dir('gamma_sensitivity'
                                  if out_dir is None else out_dir)
@@ -61,9 +64,9 @@ def run(dataset='ml-small', k=10,
                           graph_reg_gamma=gamma,
                           graph_source=graph_source,
                           laplacian_normalise=normalise)
-                res = evaluate(model, train, test_positive, k=k)
+                res = evaluate_at_ks(model, train, test_positive, ks=ks)
                 dt = time.time() - t0
-                rows.append({
+                row = {
                     'dataset': dataset,
                     'lambda': lam,
                     'rp3_beta': rp3_b,
@@ -71,16 +74,21 @@ def run(dataset='ml-small', k=10,
                     'graph_source': graph_source,
                     'normalise': normalise,
                     'gamma': gamma,
-                    'NDCG@k': res['NDCG@k'],
-                    'MAP@k': res['MAP@k'],
-                    'HitRate@k': res['HitRate@k'],
-                    'Recall@k': res['Recall@k'],
                     'train_time_s': dt,
-                })
+                }
+                for kk in ks:
+                    for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
+                        row[f'{m}@{kk}'] = res[f'{m}@{kk}']
+                # Back-compat aliases at the primary k used for the plot.
+                row['NDCG@k']    = res[f'NDCG@{k}']
+                row['MAP@k']     = res[f'MAP@{k}']
+                row['HitRate@k'] = res[f'HitRate@{k}']
+                row['Recall@k']  = res[f'Recall@{k}']
+                rows.append(row)
                 print(f"  gamma={gamma:<8.3f} "
-                      f"NDCG={res['NDCG@k']:.4f} "
-                      f"MAP={res['MAP@k']:.4f} "
-                      f"HR={res['HitRate@k']:.4f}  ({dt:.1f}s)")
+                      f"NDCG@{k}={res[f'NDCG@{k}']:.4f} "
+                      f"NDCG@{max(ks)}={res[f'NDCG@{max(ks)}']:.4f} "
+                      f"HR@{k}={res[f'HitRate@{k}']:.4f}  ({dt:.1f}s)")
 
     df = pd.DataFrame(rows)
     suffix = '_sym' if normalise == 'sym' else ''
@@ -121,14 +129,21 @@ def main():
     p.add_argument('--normalise', default='none',
                    choices=['none', 'sym'],
                    help='Laplacian normalisation. Default: none.')
+    p.add_argument('--ks', type=str, default='10,20',
+                   help='Comma-separated list of cut-offs for multi-k '
+                        'evaluation (NDCG@10, NDCG@20, ...). '
+                        'Default: "10,20".')
     args = p.parse_args()
 
     gammas = None
     if args.gammas:
         gammas = [float(x) for x in args.gammas.split(',')]
 
+    ks = tuple(int(x) for x in args.ks.split(',') if x.strip())
+
     run(dataset=args.dataset, k=args.k, gammas=gammas,
-        graph_source=args.graph_source, normalise=args.normalise)
+        graph_source=args.graph_source, normalise=args.normalise,
+        ks=ks)
 
 
 if __name__ == '__main__':

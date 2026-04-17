@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from evaluation.metrics import evaluate
+from evaluation.metrics import evaluate_at_ks
 from models import SLIM, build_graph, build_laplacian
 from models.hybrid import HybridEASE_RP3beta
 
@@ -56,10 +56,11 @@ def run(dataset='ml-small', k=10,
         gammas=None, graph_source='rp3beta',
         rp3_beta=0.6, topK=200,
         n_iter=200,
-        normalise='none',
+        normalise='none', ks=(10, 20),
         out_dir=None):
     if gammas is None:
         gammas = [0.3, 1.0, 3.0, 10.0, 30.0]
+    ks = tuple(sorted(set(list(ks) + [k])))
 
     out_dir = ensure_results_dir('slim' if out_dir is None else out_dir)
 
@@ -74,19 +75,24 @@ def run(dataset='ml-small', k=10,
     slim.fit(train, l1_reg=l1_reg, beta=beta, positive=positive,
              max_iter=30, tol=1e-4)
     t_slim = time.time() - t0
-    res_slim = evaluate(_StandaloneWrapper(slim), train, test_positive, k=k)
-    print(f"  SLIM NDCG={res_slim['NDCG@k']:.4f}  ({t_slim:.1f}s)")
-    rows.append({
-        'dataset': dataset,
-        'model': 'SLIM',
-        'gamma': 0.0,
-        'graph_source': None,
-        'NDCG@k': res_slim['NDCG@k'],
-        'MAP@k': res_slim['MAP@k'],
-        'HitRate@k': res_slim['HitRate@k'],
-        'Recall@k': res_slim['Recall@k'],
+    res_slim = evaluate_at_ks(_StandaloneWrapper(slim), train,
+                              test_positive, ks=ks)
+    print(f"  SLIM NDCG@{k}={res_slim[f'NDCG@{k}']:.4f} "
+          f"NDCG@{max(ks)}={res_slim[f'NDCG@{max(ks)}']:.4f} "
+          f"({t_slim:.1f}s)")
+    _row = {
+        'dataset': dataset, 'model': 'SLIM',
+        'gamma': 0.0, 'graph_source': None, 'normalise': None,
         'train_time_s': t_slim,
-    })
+    }
+    for kk in ks:
+        for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
+            _row[f'{m}@{kk}'] = res_slim[f'{m}@{kk}']
+    _row['NDCG@k']    = res_slim[f'NDCG@{k}']
+    _row['MAP@k']     = res_slim[f'MAP@{k}']
+    _row['HitRate@k'] = res_slim[f'HitRate@{k}']
+    _row['Recall@k']  = res_slim[f'Recall@{k}']
+    rows.append(_row)
 
     # ---- 2) EASE reference (same data) ----
     print("\n[reference] EASE")
@@ -96,20 +102,24 @@ def run(dataset='ml-small', k=10,
                  ease_lambda=500 if dataset == 'ml-1m' else 200,
                  rp3_alpha=1.0, rp3_beta=rp3_beta, rp3_topK=topK)
     ease_ref.pred = ease_ref.ease.X.dot(ease_ref.ease.B)
-    res_ease = evaluate(ease_ref, train, test_positive, k=k)
+    res_ease = evaluate_at_ks(ease_ref, train, test_positive, ks=ks)
     t_ease = time.time() - t0
-    print(f"  EASE NDCG={res_ease['NDCG@k']:.4f}  ({t_ease:.1f}s)")
-    rows.append({
-        'dataset': dataset,
-        'model': 'EASE',
-        'gamma': 0.0,
-        'graph_source': None,
-        'NDCG@k': res_ease['NDCG@k'],
-        'MAP@k': res_ease['MAP@k'],
-        'HitRate@k': res_ease['HitRate@k'],
-        'Recall@k': res_ease['Recall@k'],
+    print(f"  EASE NDCG@{k}={res_ease[f'NDCG@{k}']:.4f} "
+          f"NDCG@{max(ks)}={res_ease[f'NDCG@{max(ks)}']:.4f} "
+          f"({t_ease:.1f}s)")
+    _row = {
+        'dataset': dataset, 'model': 'EASE',
+        'gamma': 0.0, 'graph_source': None, 'normalise': None,
         'train_time_s': t_ease,
-    })
+    }
+    for kk in ks:
+        for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
+            _row[f'{m}@{kk}'] = res_ease[f'{m}@{kk}']
+    _row['NDCG@k']    = res_ease[f'NDCG@{k}']
+    _row['MAP@k']     = res_ease[f'MAP@{k}']
+    _row['HitRate@k'] = res_ease[f'HitRate@{k}']
+    _row['Recall@k']  = res_ease[f'Recall@{k}']
+    rows.append(_row)
 
     # ---- 3) Build Laplacian once ----
     X = ease_ref.ease.X
@@ -130,21 +140,24 @@ def run(dataset='ml-small', k=10,
             gamma=gamma, positive=positive, n_iter=n_iter,
         )
         t = time.time() - t0
-        res = evaluate(_StandaloneWrapper(slim_lap), train, test_positive,
-                       k=k)
-        print(f"  NDCG={res['NDCG@k']:.4f}  ({t:.1f}s)")
-        rows.append({
-            'dataset': dataset,
-            'model': 'SLIM-Laplacian',
-            'gamma': gamma,
-            'graph_source': graph_source,
-            'normalise': normalise,
-            'NDCG@k': res['NDCG@k'],
-            'MAP@k': res['MAP@k'],
-            'HitRate@k': res['HitRate@k'],
-            'Recall@k': res['Recall@k'],
-            'train_time_s': t,
-        })
+        res = evaluate_at_ks(_StandaloneWrapper(slim_lap), train,
+                             test_positive, ks=ks)
+        print(f"  NDCG@{k}={res[f'NDCG@{k}']:.4f} "
+              f"NDCG@{max(ks)}={res[f'NDCG@{max(ks)}']:.4f} "
+              f"({t:.1f}s)")
+        _row = {
+            'dataset': dataset, 'model': 'SLIM-Laplacian',
+            'gamma': gamma, 'graph_source': graph_source,
+            'normalise': normalise, 'train_time_s': t,
+        }
+        for kk in ks:
+            for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
+                _row[f'{m}@{kk}'] = res[f'{m}@{kk}']
+        _row['NDCG@k']    = res[f'NDCG@{k}']
+        _row['MAP@k']     = res[f'MAP@{k}']
+        _row['HitRate@k'] = res[f'HitRate@{k}']
+        _row['Recall@k']  = res[f'Recall@{k}']
+        rows.append(_row)
 
     df = pd.DataFrame(rows)
     suffix = '_sym' if normalise == 'sym' else ''
@@ -157,10 +170,10 @@ def run(dataset='ml-small', k=10,
     slim_lap_rows = df[df['model'] == 'SLIM-Laplacian'].sort_values('gamma')
     ax.plot(slim_lap_rows['gamma'], slim_lap_rows['NDCG@k'],
             marker='o', label='SLIM + Laplacian')
-    ax.axhline(res_slim['NDCG@k'], ls='--', color='tab:orange',
-               label=f"SLIM baseline ({res_slim['NDCG@k']:.4f})")
-    ax.axhline(res_ease['NDCG@k'], ls=':', color='grey',
-               label=f"EASE reference ({res_ease['NDCG@k']:.4f})")
+    ax.axhline(res_slim[f'NDCG@{k}'], ls='--', color='tab:orange',
+               label=f"SLIM baseline ({res_slim[f'NDCG@{k}']:.4f})")
+    ax.axhline(res_ease[f'NDCG@{k}'], ls=':', color='grey',
+               label=f"EASE reference ({res_ease[f'NDCG@{k}']:.4f})")
     ax.set_xscale('log')
     ax.set_xlabel(r'$\gamma$ (Laplacian strength, log scale)')
     ax.set_ylabel(f'NDCG@{k}')
@@ -193,17 +206,23 @@ def main():
     p.add_argument('--normalise', default='none',
                    choices=['none', 'sym'],
                    help='Laplacian normalisation. Default: none.')
+    p.add_argument('--ks', type=str, default='10,20',
+                   help='Comma-separated list of cut-offs for multi-k '
+                        'evaluation (NDCG@10, NDCG@20, ...). '
+                        'Default: "10,20".')
     args = p.parse_args()
 
     gammas = None
     if args.gammas:
         gammas = [float(x) for x in args.gammas.split(',')]
 
+    ks = tuple(int(x) for x in args.ks.split(',') if x.strip())
+
     run(dataset=args.dataset, k=args.k,
         l1_reg=args.l1_reg, beta=args.beta,
         gammas=gammas, graph_source=args.graph_source,
         rp3_beta=args.rp3_beta, topK=args.topK,
-        n_iter=args.n_iter, normalise=args.normalise)
+        n_iter=args.n_iter, normalise=args.normalise, ks=ks)
 
 
 if __name__ == '__main__':

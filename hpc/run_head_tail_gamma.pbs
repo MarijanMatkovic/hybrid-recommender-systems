@@ -1,0 +1,43 @@
+#!/bin/bash
+# =====================================================================
+# Head/tail analysis with a gamma sweep on ml-1m.
+#
+# Runs the per-bucket NDCG@k analysis for a grid of gamma values so we
+# can plot per-bucket gain vs gamma on the same axes. This is the key
+# diagnostic for the head/tail tradeoff: does some gamma help the head
+# without crushing the tail, or is the tradeoff monotonic?
+#
+# Override on the command line when submitting, e.g.:
+#     qsub -v EASE_LAMBDA=500,GAMMAS="0,3,10,30,50,75" hpc/run_head_tail_gamma.pbs
+# =====================================================================
+#PBS -N lap_head_tail_gamma
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+#PBS -o logs/head_tail_gamma.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+EASE_LAMBDA="${EASE_LAMBDA:-500}"
+RP3_BETA="${RP3_BETA:-0.3}"
+GRAPH_SOURCE="${GRAPH_SOURCE:-rp3beta}"
+N_BUCKETS="${N_BUCKETS:-5}"
+NORMALISE="${NORMALISE:-none}"
+BUCKET_BY="${BUCKET_BY:-item_popularity}"
+# Sweep values are passed as a comma-separated string (zero is kept as
+# the EASE baseline anchor in every bucket). Log-spaced covering the
+# prior sweet spot at gamma~50 plus the extremes we're curious about.
+GAMMAS="${GAMMAS:-0,3,10,30,50,75}"
+
+python -m experiments.head_tail_analysis \
+    --dataset ml-1m \
+    --k 10 \
+    --lambda_ "$EASE_LAMBDA" \
+    --rp3_beta "$RP3_BETA" \
+    --graph_source "$GRAPH_SOURCE" \
+    --normalise "$NORMALISE" \
+    --n_buckets "$N_BUCKETS" \
+    --bucket_by "$BUCKET_BY" \
+    --gammas "$GAMMAS"

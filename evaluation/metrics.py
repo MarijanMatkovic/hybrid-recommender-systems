@@ -191,6 +191,98 @@ def evaluate(model, train_df, test_df, k=10):
     return results
 
 
+def evaluate_at_ks(model, train_df, test_df, ks=(10, 20)):
+    """
+    Evaluate a fitted model at multiple cut-offs in a single pass.
+
+    Same contract as ``evaluate`` but returns metrics at every k in ``ks``
+    keyed as ``NDCG@10``, ``NDCG@20``, etc. Also returns ``per_user_ndcg``
+    as a dict of arrays keyed by k, for downstream statistical tests
+    (Wilcoxon, paired t, bootstrap).
+
+    The ranking is computed once at the largest k, then truncated for each
+    smaller k, so cost is roughly equivalent to a single ``evaluate`` at
+    the largest k.
+    """
+    ks = tuple(sorted(set(int(k) for k in ks)))
+    k_max = ks[-1]
+
+    pred_matrix = model.pred
+    if hasattr(pred_matrix, 'toarray'):
+        pred_matrix = pred_matrix.toarray()
+
+    user_enc = model.ease.user_enc
+    item_enc = model.ease.item_enc
+
+    known_users = set(user_enc.classes_)
+    known_items = set(item_enc.classes_)
+
+    test_grouped = test_df.groupby('user_id')['item_id'].apply(set).to_dict()
+    train_grouped = train_df.groupby('user_id')['item_id'].apply(set).to_dict()
+
+    n_users_total = train_df['user_id'].nunique()
+    item_pop_counts = train_df.groupby('item_id')['user_id'].nunique()
+    item_popularity = (item_pop_counts / n_users_total).to_dict()
+
+    per_k = {k: {'precision': [], 'recall': [], 'ndcg': [],
+                 'hit': [], 'map': [], 'mrr': [], 'recs': []}
+             for k in ks}
+    per_user_id = []
+
+    n_evaluated = 0
+    for user_id, relevant_items in test_grouped.items():
+        if user_id not in known_users:
+            continue
+        relevant_items = relevant_items & known_items
+        if len(relevant_items) == 0:
+            continue
+
+        user_idx = user_enc.transform([user_id])[0]
+        scores = pred_matrix[user_idx, :].copy()
+
+        for item_id in train_grouped.get(user_id, set()):
+            if item_id in known_items:
+                scores[item_enc.transform([item_id])[0]] = -np.inf
+
+        top_idx = np.argpartition(scores, -k_max)[-k_max:]
+        top_idx = top_idx[np.argsort(scores[top_idx])[::-1]]
+        top_items_max = item_enc.inverse_transform(top_idx).tolist()
+        relevant_list = list(relevant_items)
+        per_user_id.append(user_id)
+
+        for k in ks:
+            top_k = top_items_max[:k]
+            per_k[k]['precision'].append(precision_at_k(top_k, relevant_list, k))
+            per_k[k]['recall'].append(recall_at_k(top_k, relevant_list, k))
+            per_k[k]['ndcg'].append(ndcg_at_k(top_k, relevant_list, k))
+            per_k[k]['hit'].append(hit_rate_at_k(top_k, relevant_list, k))
+            per_k[k]['map'].append(map_at_k(top_k, relevant_list, k))
+            per_k[k]['mrr'].append(mrr_at_k(top_k, relevant_list, k))
+            per_k[k]['recs'].append(top_k)
+
+        n_evaluated += 1
+
+    n_total_items = len(item_enc.classes_)
+
+    results = {'n_users_evaluated': n_evaluated, 'ks': list(ks)}
+    per_user = {}
+    for k in ks:
+        results[f'Precision@{k}'] = float(np.mean(per_k[k]['precision']))
+        results[f'Recall@{k}']    = float(np.mean(per_k[k]['recall']))
+        results[f'NDCG@{k}']      = float(np.mean(per_k[k]['ndcg']))
+        results[f'HitRate@{k}']   = float(np.mean(per_k[k]['hit']))
+        results[f'MAP@{k}']       = float(np.mean(per_k[k]['map']))
+        results[f'MRR@{k}']       = float(np.mean(per_k[k]['mrr']))
+        results[f'Coverage@{k}']  = coverage(per_k[k]['recs'], n_total_items)
+        results[f'Gini@{k}']      = gini_index(per_k[k]['recs'])
+        results[f'Novelty@{k}']   = novelty(per_k[k]['recs'], item_popularity)
+        per_user[k] = np.asarray(per_k[k]['ndcg'], dtype=float)
+
+    results['per_user_ndcg'] = per_user
+    results['per_user_ids'] = per_user_id
+    return results
+
+
 def print_results(results, model_name="Model"):
     """Pretty-print evaluation results."""
     k = results['k']

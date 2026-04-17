@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from pathlib import Path
 
@@ -79,6 +80,59 @@ def temporal_train_test_split(ratings, test_ratio=0.2):
     test = pd.concat(test_dfs).reset_index(drop=True)
 
     print(f"Train: {len(train)} ratings | Test: {len(test)} ratings")
+    print(f"Test users: {test['user_id'].nunique()} | "
+          f"Test items: {test['item_id'].nunique()}")
+
+    return train, test
+
+
+def random_train_test_split(ratings, test_ratio=0.2, seed=0):
+    """
+    Per-user random train/test split with a reproducible RNG seed.
+
+    Useful for multi-seed experiments where we want to report mean ± std
+    across different data splits (as opposed to the fixed temporal split).
+    Within each user, ``test_ratio`` fraction of interactions is assigned
+    to the test set uniformly at random; the remainder goes to train.
+
+    ``max(1, int(len(group) * test_ratio))`` guarantees every user has at
+    least one test interaction, matching the contract of
+    ``temporal_train_test_split``.
+
+    Parameters
+    ----------
+    ratings : pd.DataFrame
+        Must have columns: user_id, item_id, rating, timestamp
+    test_ratio : float
+        Fraction of each user's interactions to hold out for testing.
+    seed : int
+        RNG seed -- different seeds yield different splits, same seed
+        always produces an identical split (for reproducibility).
+
+    Returns
+    -------
+    train : pd.DataFrame
+    test : pd.DataFrame
+    """
+    rng = np.random.default_rng(seed)
+
+    test_dfs = []
+    train_dfs = []
+
+    for user_id, group in ratings.groupby('user_id', sort=True):
+        n = len(group)
+        n_test = max(1, int(n * test_ratio))
+        perm = rng.permutation(n)
+        test_idx = perm[:n_test]
+        train_idx = perm[n_test:]
+        test_dfs.append(group.iloc[test_idx])
+        train_dfs.append(group.iloc[train_idx])
+
+    train = pd.concat(train_dfs).reset_index(drop=True)
+    test = pd.concat(test_dfs).reset_index(drop=True)
+
+    print(f"[random split seed={seed}]  "
+          f"Train: {len(train)} ratings | Test: {len(test)} ratings")
     print(f"Test users: {test['user_id'].nunique()} | "
           f"Test items: {test['item_id'].nunique()}")
 

@@ -16,8 +16,11 @@ Reference: <https://wiki.srce.hr/spaces/NR/pages/121966084/>
 | `run_slim.pbs`                   | SLIM + Laplacian-SLIM sweep on ml-1m (long!)       |
 | `run_gamma_sensitivity.pbs`      | NDCG vs gamma, log-scale                           |
 | `run_graph_ablation.pbs`         | RP3beta vs ItemKNN vs P3alpha vs binary adjacency  |
-| `run_head_tail.pbs`              | Head / torso / tail NDCG breakdown                 |
+| `run_head_tail.pbs`              | Head / torso / tail NDCG breakdown (single γ)      |
+| `run_head_tail_gamma.pbs`        | Head/tail NDCG gain across a γ grid (sweep plot)   |
+| `run_edlae_multiseed.pbs`        | Multi-seed EDLAE/Laplacian-EDLAE for mean ± std    |
 | `submit_all.sh`                  | `qsub`s every job in one go                        |
+| `submit_symmetric.sh`            | Tonight's sym-Laplacian sweep + new diagnostics    |
 
 ## 1. Log in
 
@@ -89,6 +92,27 @@ qsub hpc/run_slim.pbs
 qsub -v EASE_LAMBDA=200,GAMMA=75,RP3_BETA=0.3 hpc/run_head_tail.pbs
 ```
 
+`run_head_tail_gamma.pbs` (γ-sweep mode) accepts the same vars plus a
+`GAMMAS` list and a `BUCKET_BY` toggle:
+
+```bash
+qsub -v EASE_LAMBDA=500,GAMMAS="0,3,10,30,50,75",BUCKET_BY=user_activity \
+    hpc/run_head_tail_gamma.pbs
+```
+
+`run_edlae_multiseed.pbs` reports mean ± std over random splits:
+
+```bash
+qsub -v N_SEEDS=5,DROPOUT=0.5,GAMMA=50 hpc/run_edlae_multiseed.pbs
+# or with explicit seeds:
+qsub -v SPLIT_SEEDS="0,1,2,7,13",DROPOUT=0.5,GAMMA=50 \
+    hpc/run_edlae_multiseed.pbs
+```
+
+Every experiment script also accepts `--ks "10,20"` (configurable cut-off
+list). The default produces both `NDCG@10` and `NDCG@20` columns in the
+output CSVs — no need to override unless you want more cutoffs.
+
 ## 5. Monitor
 
 ```bash
@@ -118,6 +142,8 @@ rsync -avz supek.srce.hr:~/diplomski/logs/    ./logs/
 | `run_graph_ablation.pbs`  | 8    | 32GB | 6h       | Four graph sources x gamma grid                              |
 | `run_gamma_sensitivity.pbs` | 8  | 32GB | 6h       | Wide log-scale gamma grid (12 values)                        |
 | `run_head_tail.pbs`       | 8    | 32GB | 2h       | Single model, per-bucket NDCG                                |
+| `run_head_tail_gamma.pbs` | 8    | 32GB | 4h       | ~6 γ values × 1 Laplacian fit ≈ 6 × single head/tail         |
+| `run_edlae_multiseed.pbs` | 8    | 32GB | 4h       | 3 models × N_SEEDS closed-form fits (~1-2 min each on ml-1m) |
 | `run_slim.pbs`            | 16   | 64GB | 20h      | Coordinate descent per item (~3700 items on ml-1m)           |
 
 If SLIM keeps hitting walltime, shorten the gamma grid or drop

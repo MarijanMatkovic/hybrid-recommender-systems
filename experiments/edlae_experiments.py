@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from evaluation.metrics import evaluate
+from evaluation.metrics import evaluate_at_ks
 from models import EDLAE, build_graph, build_laplacian
 from models.hybrid import HybridEASE_RP3beta
 
@@ -52,14 +52,24 @@ def run(dataset='ml-small', k=10,
         gammas=None, graph_source='rp3beta',
         rp3_beta=0.6, topK=200,
         dropouts=None,
-        normalise='none',
+        normalise='none', ks=(10, 20),
+        n_seeds=1, split_seeds=None,
         out_dir=None):
+    """Single-split EDLAE + Laplacian-EDLAE sweep.
+
+    For multi-seed confidence intervals use
+    ``experiments.edlae_multiseed`` instead. The ``n_seeds`` / ``split_seeds``
+    kwargs are kept for API completeness but ignored here (this function
+    always uses the deterministic temporal split).
+    """
+    del n_seeds, split_seeds  # handled by edlae_multiseed, not here
     if lambda_ is None:
         lambda_ = 500 if dataset == 'ml-1m' else 200
     if gammas is None:
         gammas = [0.3, 1.0, 3.0, 10.0, 30.0, 100.0]
     if dropouts is None:
         dropouts = [0.25, 0.5, 0.75]
+    ks = tuple(sorted(set(list(ks) + [k])))
 
     out_dir = ensure_results_dir('edlae' if out_dir is None else out_dir)
 
@@ -75,21 +85,25 @@ def run(dataset='ml-small', k=10,
                  ease_lambda=lambda_, rp3_alpha=1.0,
                  rp3_beta=rp3_beta, rp3_topK=topK)
     ease_ref.pred = ease_ref.ease.X.dot(ease_ref.ease.B)
-    res_ease = evaluate(ease_ref, train, test_positive, k=k)
+    res_ease = evaluate_at_ks(ease_ref, train, test_positive, ks=ks)
     t_ease = time.time() - t0
-    print(f"  EASE NDCG={res_ease['NDCG@k']:.4f}  ({t_ease:.1f}s)")
-    rows.append({
-        'dataset': dataset,
-        'model': 'EASE',
-        'dropout': 0.0,
-        'gamma': 0.0,
-        'graph_source': None,
-        'NDCG@k': res_ease['NDCG@k'],
-        'MAP@k': res_ease['MAP@k'],
-        'HitRate@k': res_ease['HitRate@k'],
-        'Recall@k': res_ease['Recall@k'],
+    print(f"  EASE NDCG@{k}={res_ease[f'NDCG@{k}']:.4f} "
+          f"NDCG@{max(ks)}={res_ease[f'NDCG@{max(ks)}']:.4f} "
+          f"({t_ease:.1f}s)")
+    _row = {
+        'dataset': dataset, 'model': 'EASE',
+        'dropout': 0.0, 'gamma': 0.0,
+        'graph_source': None, 'normalise': None,
         'train_time_s': t_ease,
-    })
+    }
+    for kk in ks:
+        for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
+            _row[f'{m}@{kk}'] = res_ease[f'{m}@{kk}']
+    _row['NDCG@k']    = res_ease[f'NDCG@{k}']
+    _row['MAP@k']     = res_ease[f'MAP@{k}']
+    _row['HitRate@k'] = res_ease[f'HitRate@{k}']
+    _row['Recall@k']  = res_ease[f'Recall@{k}']
+    rows.append(_row)
 
     # ---- 2) Vanilla EDLAE sweep over dropout ----
     best_edlae_res = None
@@ -100,26 +114,35 @@ def run(dataset='ml-small', k=10,
         edlae = EDLAE()
         edlae.fit(train, lambda_=lambda_, dropout=p)
         t = time.time() - t0
-        res = evaluate(_StandaloneWrapper(edlae), train, test_positive, k=k)
-        print(f"  NDCG={res['NDCG@k']:.4f}  ({t:.1f}s)")
-        rows.append({
+        res = evaluate_at_ks(_StandaloneWrapper(edlae), train,
+                             test_positive, ks=ks)
+        print(f"  NDCG@{k}={res[f'NDCG@{k}']:.4f} "
+              f"NDCG@{max(ks)}={res[f'NDCG@{max(ks)}']:.4f} "
+              f"({t:.1f}s)")
+        _row = {
             'dataset': dataset,
             'model': 'EDLAE',
             'dropout': p,
             'gamma': 0.0,
             'graph_source': None,
-            'NDCG@k': res['NDCG@k'],
-            'MAP@k': res['MAP@k'],
-            'HitRate@k': res['HitRate@k'],
-            'Recall@k': res['Recall@k'],
+            'normalise': None,
             'train_time_s': t,
-        })
-        if best_edlae_res is None or res['NDCG@k'] > best_edlae_res['NDCG@k']:
+        }
+        for kk in ks:
+            for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
+                _row[f'{m}@{kk}'] = res[f'{m}@{kk}']
+        _row['NDCG@k']    = res[f'NDCG@{k}']
+        _row['MAP@k']     = res[f'MAP@{k}']
+        _row['HitRate@k'] = res[f'HitRate@{k}']
+        _row['Recall@k']  = res[f'Recall@{k}']
+        rows.append(_row)
+        if (best_edlae_res is None
+                or res[f'NDCG@{k}'] > best_edlae_res[f'NDCG@{k}']):
             best_edlae_res = res
             best_edlae_dropout = p
 
     print(f"\nBest EDLAE dropout: {best_edlae_dropout} "
-          f"(NDCG={best_edlae_res['NDCG@k']:.4f})")
+          f"(NDCG@{k}={best_edlae_res[f'NDCG@{k}']:.4f})")
 
     # ---- 3) Build Laplacian once ----
     X = ease_ref.ease.X
@@ -142,22 +165,28 @@ def run(dataset='ml-small', k=10,
             gamma=gamma,
         )
         t = time.time() - t0
-        res = evaluate(_StandaloneWrapper(edlae_lap), train, test_positive,
-                       k=k)
-        print(f"  NDCG={res['NDCG@k']:.4f}  ({t:.1f}s)")
-        rows.append({
+        res = evaluate_at_ks(_StandaloneWrapper(edlae_lap), train,
+                             test_positive, ks=ks)
+        print(f"  NDCG@{k}={res[f'NDCG@{k}']:.4f} "
+              f"NDCG@{max(ks)}={res[f'NDCG@{max(ks)}']:.4f} "
+              f"({t:.1f}s)")
+        _row = {
             'dataset': dataset,
             'model': 'EDLAE-Laplacian',
             'dropout': best_edlae_dropout,
             'gamma': gamma,
             'graph_source': graph_source,
             'normalise': normalise,
-            'NDCG@k': res['NDCG@k'],
-            'MAP@k': res['MAP@k'],
-            'HitRate@k': res['HitRate@k'],
-            'Recall@k': res['Recall@k'],
             'train_time_s': t,
-        })
+        }
+        for kk in ks:
+            for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
+                _row[f'{m}@{kk}'] = res[f'{m}@{kk}']
+        _row['NDCG@k']    = res[f'NDCG@{k}']
+        _row['MAP@k']     = res[f'MAP@{k}']
+        _row['HitRate@k'] = res[f'HitRate@{k}']
+        _row['Recall@k']  = res[f'Recall@{k}']
+        rows.append(_row)
 
     df = pd.DataFrame(rows)
     suffix = '_sym' if normalise == 'sym' else ''
@@ -170,10 +199,10 @@ def run(dataset='ml-small', k=10,
     lap_rows = df[df['model'] == 'EDLAE-Laplacian'].sort_values('gamma')
     ax.plot(lap_rows['gamma'], lap_rows['NDCG@k'],
             marker='o', label=f'EDLAE + Laplacian (dropout={best_edlae_dropout})')
-    ax.axhline(best_edlae_res['NDCG@k'], ls='--', color='tab:orange',
-               label=f"EDLAE baseline ({best_edlae_res['NDCG@k']:.4f})")
-    ax.axhline(res_ease['NDCG@k'], ls=':', color='grey',
-               label=f"EASE reference ({res_ease['NDCG@k']:.4f})")
+    ax.axhline(best_edlae_res[f'NDCG@{k}'], ls='--', color='tab:orange',
+               label=f"EDLAE baseline ({best_edlae_res[f'NDCG@{k}']:.4f})")
+    ax.axhline(res_ease[f'NDCG@{k}'], ls=':', color='grey',
+               label=f"EASE reference ({res_ease[f'NDCG@{k}']:.4f})")
     ax.set_xscale('log')
     ax.set_xlabel(r'$\gamma$ (Laplacian strength, log scale)')
     ax.set_ylabel(f'NDCG@{k}')
@@ -205,6 +234,10 @@ def main():
     p.add_argument('--normalise', default='none',
                    choices=['none', 'sym'],
                    help='Laplacian normalisation. Default: none.')
+    p.add_argument('--ks', type=str, default='10,20',
+                   help='Comma-separated list of cut-offs for multi-k '
+                        'evaluation (NDCG@10, NDCG@20, ...). '
+                        'Default: "10,20".')
     args = p.parse_args()
 
     gammas = None
@@ -215,11 +248,14 @@ def main():
     if args.dropout is not None:
         dropouts = [args.dropout]
 
+    ks = tuple(int(x) for x in args.ks.split(',') if x.strip())
+
     run(dataset=args.dataset, k=args.k,
         lambda_=args.lambda_, gammas=gammas,
         graph_source=args.graph_source,
         rp3_beta=args.rp3_beta, topK=args.topK,
-        dropouts=dropouts, normalise=args.normalise)
+        dropouts=dropouts, normalise=args.normalise,
+        ks=ks)
 
 
 if __name__ == '__main__':
