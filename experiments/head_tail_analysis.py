@@ -350,11 +350,13 @@ def _run_single(base, base_summary, base_per_user,
                             base_val if base_val > 0 else 0.0,
             }
             if metric == 'ndcg':
-                stat, pval, n = _wilcoxon_paired(
+                stat, pval, n, sign, median_diff = _wilcoxon_paired(
                     base_per_user[bucket], lap_per_user[bucket])
                 row['wilcoxon_stat'] = stat
                 row['wilcoxon_p'] = pval
                 row['wilcoxon_n_pairs'] = n
+                row['wilcoxon_sign'] = sign
+                row['wilcoxon_median_diff'] = median_diff
             rows.append(row)
     df = pd.DataFrame(rows)
     suffix = '_sym' if normalise == 'sym' else ''
@@ -419,8 +421,8 @@ def _run_gamma_sweep(base, base_summary, base_per_user,
     # plot includes the EASE anchor.
     for bucket in ('overall',) + labels:
         base_val = base_summary[bucket]['ndcg']
-        stat, pval, n = _wilcoxon_paired(base_per_user[bucket],
-                                         base_per_user[bucket])
+        stat, pval, n, sign, median_diff = _wilcoxon_paired(
+            base_per_user[bucket], base_per_user[bucket])
         rows.append({
             'dataset': dataset, 'graph_source': graph_source,
             'normalise': normalise, 'bucket_by': bucket_by,
@@ -431,6 +433,8 @@ def _run_gamma_sweep(base, base_summary, base_per_user,
             'abs_gain': 0.0, 'rel_gain': 0.0,
             'wilcoxon_stat': stat, 'wilcoxon_p': pval,
             'wilcoxon_n_pairs': n,
+            'wilcoxon_sign': sign,
+            'wilcoxon_median_diff': median_diff,
         })
 
     for gamma in gammas:
@@ -450,7 +454,7 @@ def _run_gamma_sweep(base, base_summary, base_per_user,
         for bucket in ('overall',) + labels:
             base_val = base_summary[bucket]['ndcg']
             lap_val = lap_summary[bucket]['ndcg']
-            stat, pval, n = _wilcoxon_paired(
+            stat, pval, n, sign, median_diff = _wilcoxon_paired(
                 base_per_user[bucket], lap_per_user[bucket])
             rows.append({
                 'dataset': dataset, 'graph_source': graph_source,
@@ -464,6 +468,8 @@ def _run_gamma_sweep(base, base_summary, base_per_user,
                             base_val if base_val > 0 else 0.0,
                 'wilcoxon_stat': stat, 'wilcoxon_p': pval,
                 'wilcoxon_n_pairs': n,
+                'wilcoxon_sign': sign,
+                'wilcoxon_median_diff': median_diff,
             })
 
     df = pd.DataFrame(rows)

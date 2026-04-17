@@ -33,6 +33,8 @@ from models.hybrid import HybridEASE_RP3beta
 from experiments._shared import (
     ensure_results_dir,
     load_dataset,
+    wilcoxon_blank_columns,
+    wilcoxon_columns,
     wilcoxon_vs_baseline,
 )
 
@@ -107,12 +109,13 @@ def run(dataset='ml-small', k=10,
     _row['MAP@k']     = res_ease[f'MAP@{k}']
     _row['HitRate@k'] = res_ease[f'HitRate@{k}']
     _row['Recall@k']  = res_ease[f'Recall@{k}']
-    # EASE is the baseline in this script -- its own row carries a
-    # nan/0 Wilcoxon triple so the column schema is identical for
-    # every row.
-    _row['wilcoxon_stat_vs_EASE']    = float('nan')
-    _row['wilcoxon_p_vs_EASE']       = float('nan')
-    _row['wilcoxon_n_pairs_vs_EASE'] = 0
+    # EASE is the baseline in this script -- its own row carries
+    # nan/0 Wilcoxon columns so the CSV schema is identical for every
+    # row. The vs-EDLAE comparison is also blank here (EASE isn't
+    # being compared to EDLAE; the comparison only applies to
+    # Laplacian-EDLAE rows).
+    _row.update(wilcoxon_blank_columns('wilcoxon_vs_EASE'))
+    _row.update(wilcoxon_blank_columns('wilcoxon_vs_EDLAE'))
     rows.append(_row)
 
     # ---- 2) Vanilla EDLAE sweep over dropout ----
@@ -126,10 +129,14 @@ def run(dataset='ml-small', k=10,
         t = time.time() - t0
         res = evaluate_at_ks(_StandaloneWrapper(edlae), train,
                              test_positive, ks=ks)
-        w_stat, w_p, w_n = wilcoxon_vs_baseline(res_ease, res, k=k)
+        w_ease = wilcoxon_vs_baseline(res_ease, res, k=k)
+        w_p_ease, w_sign_ease = w_ease[1], w_ease[3]
+        sign_str = (f'{w_sign_ease:+d}'
+                    if w_sign_ease != 0 else ' 0')
         print(f"  NDCG@{k}={res[f'NDCG@{k}']:.4f} "
               f"NDCG@{max(ks)}={res[f'NDCG@{max(ks)}']:.4f} "
-              f"p(vs EASE)={w_p:.2e}  ({t:.1f}s)")
+              f"p(vs EASE)={w_p_ease:.2e}  sign={sign_str}  "
+              f"({t:.1f}s)")
         _row = {
             'dataset': dataset,
             'model': 'EDLAE',
@@ -146,9 +153,10 @@ def run(dataset='ml-small', k=10,
         _row['MAP@k']     = res[f'MAP@{k}']
         _row['HitRate@k'] = res[f'HitRate@{k}']
         _row['Recall@k']  = res[f'Recall@{k}']
-        _row['wilcoxon_stat_vs_EASE']    = w_stat
-        _row['wilcoxon_p_vs_EASE']       = w_p
-        _row['wilcoxon_n_pairs_vs_EASE'] = w_n
+        _row.update(wilcoxon_columns('wilcoxon_vs_EASE', w_ease))
+        # EDLAE baseline rows have no "vs EDLAE" comparison (the
+        # comparison only applies to Laplacian-EDLAE rows).
+        _row.update(wilcoxon_blank_columns('wilcoxon_vs_EDLAE'))
         rows.append(_row)
         if (best_edlae_res is None
                 or res[f'NDCG@{k}'] > best_edlae_res[f'NDCG@{k}']):
@@ -181,10 +189,22 @@ def run(dataset='ml-small', k=10,
         t = time.time() - t0
         res = evaluate_at_ks(_StandaloneWrapper(edlae_lap), train,
                              test_positive, ks=ks)
-        w_stat, w_p, w_n = wilcoxon_vs_baseline(res_ease, res, k=k)
+        w_ease  = wilcoxon_vs_baseline(res_ease,        res, k=k)
+        # The scientifically interesting test: does adding the
+        # Laplacian beat plain EDLAE (the strongest non-Laplacian
+        # linear baseline), not just EASE?
+        w_edlae = wilcoxon_vs_baseline(best_edlae_res,  res, k=k)
+        w_p_ease,  w_sign_ease  = w_ease[1],  w_ease[3]
+        w_p_edlae, w_sign_edlae = w_edlae[1], w_edlae[3]
+        sign_ease_str = (f'{w_sign_ease:+d}'
+                         if w_sign_ease != 0 else ' 0')
+        sign_edlae_str = (f'{w_sign_edlae:+d}'
+                          if w_sign_edlae != 0 else ' 0')
         print(f"  NDCG@{k}={res[f'NDCG@{k}']:.4f} "
               f"NDCG@{max(ks)}={res[f'NDCG@{max(ks)}']:.4f} "
-              f"p(vs EASE)={w_p:.2e}  ({t:.1f}s)")
+              f"p(vs EASE)={w_p_ease:.2e}[{sign_ease_str}] "
+              f"p(vs EDLAE)={w_p_edlae:.2e}[{sign_edlae_str}] "
+              f"({t:.1f}s)")
         _row = {
             'dataset': dataset,
             'model': 'EDLAE-Laplacian',
@@ -201,9 +221,8 @@ def run(dataset='ml-small', k=10,
         _row['MAP@k']     = res[f'MAP@{k}']
         _row['HitRate@k'] = res[f'HitRate@{k}']
         _row['Recall@k']  = res[f'Recall@{k}']
-        _row['wilcoxon_stat_vs_EASE']    = w_stat
-        _row['wilcoxon_p_vs_EASE']       = w_p
-        _row['wilcoxon_n_pairs_vs_EASE'] = w_n
+        _row.update(wilcoxon_columns('wilcoxon_vs_EASE',  w_ease))
+        _row.update(wilcoxon_columns('wilcoxon_vs_EDLAE', w_edlae))
         rows.append(_row)
 
     df = pd.DataFrame(rows)

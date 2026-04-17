@@ -106,9 +106,12 @@ def test_wilcoxon_paired_identical_series_returns_p_equals_1():
     vals = np.linspace(0.1, 0.5, 20)
     base = (vals.copy(), users)
     same = (vals.copy(), users)
-    stat, p, n = _wilcoxon_paired(base, same)
+    stat, p, n, sign, median_diff = _wilcoxon_paired(base, same)
     assert n == 20
     assert p == 1.0
+    # All diffs zero -> sign must be 0 (no direction), median_diff = 0.
+    assert sign == 0
+    assert median_diff == 0.0
 
 
 def test_wilcoxon_paired_significant_when_strictly_larger():
@@ -117,9 +120,13 @@ def test_wilcoxon_paired_significant_when_strictly_larger():
     users = list(range(60))
     base_vals = rng.uniform(0.1, 0.5, size=60)
     mod_vals = base_vals + 0.05  # strictly better for every user
-    stat, p, n = _wilcoxon_paired((base_vals, users), (mod_vals, users))
+    stat, p, n, sign, median_diff = _wilcoxon_paired(
+        (base_vals, users), (mod_vals, users))
     assert n == 60
     assert p < 0.01
+    # Model wins on every user -> sign=+1, median_diff=+0.05.
+    assert sign == 1
+    assert median_diff == pytest.approx(0.05, abs=1e-12)
 
 
 def test_wilcoxon_paired_intersects_on_user_id():
@@ -128,7 +135,7 @@ def test_wilcoxon_paired_intersects_on_user_id():
     # Only users {10, 11, 12, 13} appear in both.
     base = (np.array([0.1, 0.2, 0.3, 0.4]), [1, 2, 10, 11])
     mod  = (np.array([0.9, 0.8, 0.7, 0.6]), [10, 11, 12, 13])
-    stat, p, n = _wilcoxon_paired(base, mod)
+    stat, p, n, sign, median_diff = _wilcoxon_paired(base, mod)
     assert n == 2   # common = {10, 11}
 
 
@@ -136,6 +143,6 @@ def test_wilcoxon_paired_returns_nan_when_no_overlap():
     """No common users -> nan p-value, n_pairs=0."""
     base = (np.array([0.1, 0.2]), [1, 2])
     mod  = (np.array([0.3, 0.4]), [3, 4])
-    stat, p, n = _wilcoxon_paired(base, mod)
+    stat, p, n, sign, median_diff = _wilcoxon_paired(base, mod)
     assert n == 0
     assert np.isnan(p)

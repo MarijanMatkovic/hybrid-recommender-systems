@@ -33,6 +33,8 @@ from models.graph_sources import VALID_SOURCES
 from experiments._shared import (
     ensure_results_dir,
     load_dataset,
+    wilcoxon_blank_columns,
+    wilcoxon_columns,
     wilcoxon_vs_baseline,
 )
 
@@ -89,7 +91,8 @@ def run(dataset='ml-small', k=10,
                       laplacian_normalise=normalise)
             res = evaluate_at_ks(model, train, test_positive, ks=ks)
             dt = time.time() - t0
-            w_stat, w_p, w_n = wilcoxon_vs_baseline(res_base, res, k=k)
+            w_result = wilcoxon_vs_baseline(res_base, res, k=k)
+            w_p, w_sign = w_result[1], w_result[3]
             row = {
                 'dataset': dataset,
                 'source': source,
@@ -107,15 +110,16 @@ def run(dataset='ml-small', k=10,
             row['MAP@k']     = res[f'MAP@{k}']
             row['HitRate@k'] = res[f'HitRate@{k}']
             row['Recall@k']  = res[f'Recall@{k}']
-            row['wilcoxon_stat_vs_EASE']    = w_stat
-            row['wilcoxon_p_vs_EASE']       = w_p
-            row['wilcoxon_n_pairs_vs_EASE'] = w_n
+            row.update(wilcoxon_columns('wilcoxon_vs_EASE', w_result))
             rows.append(row)
+            # The p-value alone is ambiguous about direction, so the
+            # log line reports the sign too (+1 = model wins, -1 = loses).
+            sign_str = f'{w_sign:+d}' if w_sign != 0 else ' 0'
             print(f"  gamma={gamma:<6.2f} "
                   f"NDCG@{k}={res[f'NDCG@{k}']:.4f} "
                   f"NDCG@{max(ks)}={res[f'NDCG@{max(ks)}']:.4f} "
                   f"HR@{k}={res[f'HitRate@{k}']:.4f} "
-                  f"p={w_p:.2e}  ({dt:.1f}s)")
+                  f"p={w_p:.2e}  sign={sign_str}  ({dt:.1f}s)")
 
     df = pd.DataFrame(rows)
     suffix = '_sym' if normalise == 'sym' else ''

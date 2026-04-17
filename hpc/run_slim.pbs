@@ -27,11 +27,17 @@ export OPENBLAS_NUM_THREADS=4
 export MKL_NUM_THREADS=4
 
 NORMALISE="${NORMALISE:-none}"
+# Default gamma grid spans an order of magnitude around the previously
+# observed ml-1m sweet spot (~30-50). Override when the prior sweep
+# shows the curve is still rising at the top, e.g.:
+#     qsub -v NORMALISE=sym,GAMMAS="30,50,75,100,150,200" ...
+GAMMAS="${GAMMAS:-1,3,10,30,75}"
+N_ITER="${N_ITER:-150}"
 
 python -m experiments.slim_experiments \
     --dataset ml-1m \
     --k 10 \
-    --gammas "1,3,10,30,75" \
-    --n_iter 150 \
+    --gammas "$GAMMAS" \
+    --n_iter "$N_ITER" \
     --topK 200 \
     --normalise "$NORMALISE"

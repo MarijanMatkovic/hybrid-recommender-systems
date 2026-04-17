@@ -40,12 +40,26 @@ def wilcoxon_paired(baseline_per_user, model_per_user):
         ``(values, user_ids)`` for the compared model (e.g. Laplacian-EASE).
 
     The two sets of users are intersected so the test is genuinely
-    paired. Returns ``(stat, pvalue, n_pairs)``. ``nan`` p-value with
-    ``n_pairs=0`` indicates no overlap; ``p=1.0`` indicates all
-    differences are zero (no evidence either way).
+    paired.
+
+    Returns
+    -------
+    (stat, pvalue, n_pairs, sign, median_diff) : tuple
+        ``stat``, ``pvalue``: from ``scipy.stats.wilcoxon``.
+        ``n_pairs``: number of overlapping users. ``nan`` p-value with
+            ``n_pairs=0`` indicates no overlap; ``p=1.0`` indicates all
+            differences are zero (no evidence either way).
+        ``sign`` in {-1, 0, +1}: sign of ``median(model - baseline)``.
+            Disambiguates which side 'won' -- a tiny p-value with
+            ``sign=-1`` means the model is SIGNIFICANTLY WORSE, not
+            better.
+        ``median_diff``: the actual ``median(model - baseline)`` so the
+            reader can see the magnitude (not just direction) without
+            re-running the test.
     """
+    empty = (float('nan'), float('nan'), 0, 0, float('nan'))
     if not _HAVE_WILCOXON:
-        return (float('nan'), float('nan'), 0)
+        return empty
 
     base_vals, base_users = baseline_per_user
     mod_vals,  mod_users  = model_per_user
@@ -54,41 +68,76 @@ def wilcoxon_paired(baseline_per_user, model_per_user):
     mod_map  = dict(zip(mod_users,  mod_vals))
     common = sorted(set(base_map) & set(mod_map))
     if len(common) < 2:
-        return (float('nan'), float('nan'), len(common))
+        return (float('nan'), float('nan'), len(common),
+                0, float('nan'))
 
     b = np.array([base_map[u] for u in common], dtype=float)
     m = np.array([mod_map[u]  for u in common], dtype=float)
     diff = m - b
+    median_diff = float(np.median(diff))
+    sign = int(np.sign(median_diff)) if median_diff != 0.0 else 0
     if not np.any(diff != 0):
-        return (0.0, 1.0, len(common))
+        return (0.0, 1.0, len(common), 0, 0.0)
     try:
         stat, p = wilcoxon(m, b, zero_method='wilcox',
                            alternative='two-sided')
     except Exception:  # pragma: no cover
-        return (float('nan'), float('nan'), len(common))
-    return (float(stat), float(p), int(len(common)))
+        return (float('nan'), float('nan'), len(common),
+                sign, median_diff)
+    return (float(stat), float(p), int(len(common)),
+            sign, median_diff)
 
 
 def wilcoxon_vs_baseline(res_baseline, res_model, k):
     """Convenience wrapper that takes two ``evaluate_at_ks`` results
     and runs ``wilcoxon_paired`` on the per-user NDCG@k arrays.
 
-    Returns ``(stat, pvalue, n_pairs)``. Safe to call with k values
-    not present in either result -- returns ``(nan, nan, 0)``.
+    Returns ``(stat, pvalue, n_pairs, sign, median_diff)``. Safe to
+    call with k values not present in either result -- returns
+    ``(nan, nan, 0, 0, nan)``.
     """
+    empty = (float('nan'), float('nan'), 0, 0, float('nan'))
     if ('per_user_ndcg' not in res_baseline
             or 'per_user_ndcg' not in res_model
             or 'per_user_ids' not in res_baseline
             or 'per_user_ids' not in res_model):
-        return (float('nan'), float('nan'), 0)
+        return empty
     b_ndcg = res_baseline['per_user_ndcg'].get(k)
     m_ndcg = res_model['per_user_ndcg'].get(k)
     if b_ndcg is None or m_ndcg is None:
-        return (float('nan'), float('nan'), 0)
+        return empty
     return wilcoxon_paired(
         (b_ndcg, res_baseline['per_user_ids']),
         (m_ndcg, res_model['per_user_ids']),
     )
+
+
+def wilcoxon_columns(prefix: str, wilcoxon_result):
+    """Expand a Wilcoxon result tuple into CSV-friendly columns.
+
+    Produces the canonical column layout used across every experiment
+    CSV so downstream tooling (e.g. thesis plot scripts) can assume a
+    stable schema:
+
+        {prefix}_stat, {prefix}_p, {prefix}_n_pairs,
+        {prefix}_sign, {prefix}_median_diff
+    """
+    stat, p, n, sign, median_diff = wilcoxon_result
+    return {
+        f'{prefix}_stat':         stat,
+        f'{prefix}_p':            p,
+        f'{prefix}_n_pairs':      n,
+        f'{prefix}_sign':         sign,
+        f'{prefix}_median_diff':  median_diff,
+    }
+
+
+def wilcoxon_blank_columns(prefix: str):
+    """Columns carrying the blank/sentinel values for rows where the
+    paired test doesn't apply (e.g. the baseline compared against itself).
+    Keeps every CSV's schema identical."""
+    return wilcoxon_columns(prefix, (float('nan'), float('nan'),
+                                     0, 0, float('nan')))
 
 
 def load_dataset(dataset: str, split_mode: str = 'temporal',

@@ -235,7 +235,39 @@ submit hpc/run_edlae_multiseed_ml1m.pbs \
     "EDLAE multi-seed ml-1m [sym]" \
     lap_edlae_multi_ml1m_sym \
     logs/edlae_multiseed_ml1m_sym.log \
-    -v N_SEEDS=3,DROPOUT=0.75,GAMMA=10,LAMBDA_=500,GRAPH_SOURCE=rp3beta,RP3_BETA=0.3,NORMALISE=sym
+    -v N_SEEDS=5,DROPOUT=0.75,GAMMAS="1,3,10",LAMBDA_=500,GRAPH_SOURCE=rp3beta,RP3_BETA=0.3,NORMALISE=sym
+
+# ---------------------------------------------------------------------
+# Priority 11 — Head/tail γ sweep on the ItemKNN graph with SYM.
+# The rp3beta+sym sweep already runs above (priority 7); this adds the
+# ItemKNN graph at the same cadence, since prior ml-small runs pointed
+# to ItemKNN as the strongest source at the optimal γ. Together the
+# two form the core head-vs-tail diagnostic for the thesis.
+# λ=500 keeps it apples-to-apples with the rp3beta sym sweep.
+# ---------------------------------------------------------------------
+echo ""
+echo ">>> Head/tail γ sweep (ItemKNN + sym, ml-1m)"
+
+submit hpc/run_head_tail_gamma.pbs \
+    "head-tail γ-sweep ItemKNN [sym]" \
+    lap_ht_gamma_iknn_sym \
+    logs/head_tail_gamma_iknn_sym.log \
+    -v EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=itemknn,NORMALISE=sym,N_BUCKETS=5,BUCKET_BY=item_popularity,GAMMAS="3,10,30,50,75,100"
+
+# ---------------------------------------------------------------------
+# Priority 12 — SLIM sym follow-up. The previous SLIM sym sweep peaked
+# at γ=75 with the NDCG curve still rising, so extend the grid. Keep
+# the original low-γ points too (cheap on top of the SLIM fit) so the
+# single CSV has the full shape.
+# ---------------------------------------------------------------------
+echo ""
+echo ">>> SLIM + Laplacian (sym, extended γ grid)"
+
+submit hpc/run_slim.pbs \
+    "SLIM sweep [sym, extended γ]" \
+    lap_slim_sym_ext \
+    logs/slim_sym_ext.log \
+    -v NORMALISE=sym,GAMMAS="10,30,75,100,150,200"
 
 echo ""
 echo "============================================================"
