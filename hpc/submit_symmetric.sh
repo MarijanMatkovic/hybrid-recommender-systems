@@ -196,6 +196,47 @@ submit hpc/run_edlae_multiseed.pbs \
     logs/edlae_multiseed_sym.log \
     -v N_SEEDS=5,DROPOUT=0.5,GAMMA=50,LAMBDA_=500,GRAPH_SOURCE=rp3beta,RP3_BETA=0.3,NORMALISE=sym
 
+# ---------------------------------------------------------------------
+# Priority 9 — B-matrix diagnostics (sparsity, graph alignment,
+# condition number) across a gamma sweep. Answers the two reviewer
+# questions that the NDCG-vs-gamma plot doesn't:
+#   - does the Laplacian make B more 'graph-like'?
+#   - is the NDCG collapse at large gamma numerical?
+# Run both Laplacian variants since the story may differ.
+# ---------------------------------------------------------------------
+echo ""
+echo ">>> B-matrix diagnostics (gamma sweep)"
+
+submit hpc/run_b_matrix_analysis.pbs \
+    "B-matrix diagnostics [none]" \
+    lap_b_matrix_none \
+    logs/b_matrix_none.log \
+    -v DATASET=ml-1m,EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=none,GAMMAS="0,1,3,10,30,50,100,300,1000"
+
+submit hpc/run_b_matrix_analysis.pbs \
+    "B-matrix diagnostics [sym]" \
+    lap_b_matrix_sym \
+    logs/b_matrix_sym.log \
+    -v DATASET=ml-1m,EASE_LAMBDA=500,RP3_BETA=0.3,GRAPH_SOURCE=rp3beta,NORMALISE=sym,GAMMAS="0,1,3,10,30,50,100,300,1000"
+
+# ---------------------------------------------------------------------
+# Priority 10 — Multi-seed EDLAE on ML-1M (the VALIDATION run). The
+# earlier synth multi-seed job had std > delta-between-means because
+# dataset noise dominated — useless. This one uses the real data with
+# the sym + gamma=10 + dropout=0.75 config that was optimal in prior
+# sweeps, so the 3-seed std we report actually reflects split noise
+# rather than tiny-dataset noise. 3 seeds is enough: closed-form fits
+# are fully deterministic given the train matrix.
+# ---------------------------------------------------------------------
+echo ""
+echo ">>> Multi-seed EDLAE on ML-1M (validation of EDLAE-Lap gain)"
+
+submit hpc/run_edlae_multiseed_ml1m.pbs \
+    "EDLAE multi-seed ml-1m [sym]" \
+    lap_edlae_multi_ml1m_sym \
+    logs/edlae_multiseed_ml1m_sym.log \
+    -v N_SEEDS=3,DROPOUT=0.75,GAMMA=10,LAMBDA_=500,GRAPH_SOURCE=rp3beta,RP3_BETA=0.3,NORMALISE=sym
+
 echo ""
 echo "============================================================"
 echo "  All sym-variant jobs submitted. Monitor with:"

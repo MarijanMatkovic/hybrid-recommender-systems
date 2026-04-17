@@ -1,0 +1,55 @@
+#!/bin/bash
+# =====================================================================
+# B-matrix diagnostics across a gamma sweep (items 7 + 8 from the
+# reviewer list).
+#
+# For every gamma we fit Laplacian-EASE once and record:
+#   - sparsity of the learned B (fraction of |B_ij| above several
+#     thresholds)
+#   - graph alignment of B with the source graph W (per-row top-K
+#     Jaccard, entry-wise Pearson, edge/non-edge magnitude ratio)
+#   - condition number and eigenvalue extremes of the solved system
+#     (X^T X + lambda*I + gamma*L)
+#
+# This answers two questions the NDCG-vs-gamma plot cannot:
+#   (a) does the Laplacian make B more 'graph-like'? (alignment)
+#   (b) is the NDCG collapse at large gamma actually numerical? (cond)
+#
+# Override on submit, e.g.:
+#     qsub -v NORMALISE=sym,GAMMAS="0,1,3,10,30,100,300" \
+#          hpc/run_b_matrix_analysis.pbs
+# =====================================================================
+#PBS -N lap_b_matrix
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+#PBS -o logs/b_matrix_analysis.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+DATASET="${DATASET:-ml-1m}"
+EASE_LAMBDA="${EASE_LAMBDA:-500}"
+RP3_BETA="${RP3_BETA:-0.3}"
+GRAPH_SOURCE="${GRAPH_SOURCE:-rp3beta}"
+NORMALISE="${NORMALISE:-none}"
+ALIGN_TOPK="${ALIGN_TOPK:-20}"
+# Full sweep covers the NDCG sweet spot (gamma~50 for ml-1m) plus the
+# right-tail values where the NDCG-vs-gamma curve collapsed, so we can
+# tell whether that collapse is numerical or a bias-variance tradeoff.
+GAMMAS="${GAMMAS:-0,1,3,10,30,50,100,300,1000}"
+# Histogram snapshots at a handful of gammas (defaults to auto-pick if
+# empty).
+HIST_GAMMAS="${HIST_GAMMAS:-0,10,100,1000}"
+
+python -m experiments.b_matrix_analysis \
+    --dataset "$DATASET" \
+    --k 10 \
+    --ease_lambda "$EASE_LAMBDA" \
+    --rp3_beta "$RP3_BETA" \
+    --graph_source "$GRAPH_SOURCE" \
+    --normalise "$NORMALISE" \
+    --alignment_topK "$ALIGN_TOPK" \
+    --gammas "$GAMMAS" \
+    --hist_gammas "$HIST_GAMMAS"

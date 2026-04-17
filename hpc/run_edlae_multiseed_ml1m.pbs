@@ -1,0 +1,61 @@
+#!/bin/bash
+# =====================================================================
+# Multi-seed EDLAE on ML-1M -- the real validation run.
+#
+# The earlier multi-seed run was on the synthetic 49-user dataset, where
+# dataset noise dominates and standard deviations blow up to 0.016 on
+# NDCG@5 values of ~0.065 (i.e. std > delta between means -- no signal).
+# This job runs the same comparison on ML-1M (~6k users), where the
+# dominant variance source is the train/test split and 3 seeds is enough
+# to tell whether the 0.0012 absolute gain of EDLAE-Laplacian over EDLAE
+# is above noise.
+#
+# Settings match the optimal config from the symmetric-Laplacian sweep:
+#   NORMALISE = sym
+#   GAMMA     = 10     (sym-specific sweet spot -- differs from none
+#                       because sym scales gamma differently)
+#   DROPOUT   = 0.75   (EDLAE best dropout from the ml-1m sweep)
+#   LAMBDA_   = 500
+#   RP3_BETA  = 0.3
+#
+# Override on submit, e.g.:
+#     qsub -v N_SEEDS=5,GAMMA=50 hpc/run_edlae_multiseed_ml1m.pbs
+#
+# With closed-form fits at ~3s each, 3 seeds * 4 conditions ≈ under a
+# minute of compute plus data-loading overhead -- the 4h walltime is
+# there for safety margin only.
+# =====================================================================
+#PBS -N lap_edlae_multi_ml1m
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+#PBS -o logs/edlae_multiseed_ml1m.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+N_SEEDS="${N_SEEDS:-3}"
+DROPOUT="${DROPOUT:-0.75}"
+GAMMA="${GAMMA:-10}"
+GRAPH_SOURCE="${GRAPH_SOURCE:-rp3beta}"
+RP3_BETA="${RP3_BETA:-0.3}"
+LAMBDA_="${LAMBDA_:-500}"
+NORMALISE="${NORMALISE:-sym}"
+
+SPLIT_SEEDS_ARG=""
+if [[ -n "${SPLIT_SEEDS:-}" ]]; then
+    SPLIT_SEEDS_ARG="--split_seeds $SPLIT_SEEDS"
+fi
+
+python -m experiments.edlae_multiseed \
+    --dataset ml-1m \
+    --k 10 \
+    --lambda_ "$LAMBDA_" \
+    --dropout "$DROPOUT" \
+    --gamma "$GAMMA" \
+    --graph_source "$GRAPH_SOURCE" \
+    --rp3_beta "$RP3_BETA" \
+    --normalise "$NORMALISE" \
+    --n_seeds "$N_SEEDS" \
+    $SPLIT_SEEDS_ARG
