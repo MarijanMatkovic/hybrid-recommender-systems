@@ -6,10 +6,21 @@
 # variance across runs comes from the train/test split -- this job
 # repeats EASE / EDLAE / Laplacian-EDLAE across N random per-user
 # splits and reports mean ± std. ml-1m takes ~1-2 min per split for
-# closed-form models, so 5 seeds x 3 models is easily under an hour.
+# closed-form models, so 5 seeds x (2 + |gammas|) models is still a
+# few hours of walltime at worst.
+#
+# The gamma grid defaults to a wide log-scale sweep covering the
+# small-gamma region (<=1) which prior runs never tested. The first
+# 5-seed primary run showed Laplacian-EDLAE losing to EDLAE at every
+# gamma in {1, 3, 10} -- before we conclude "random split kills the
+# Laplacian," we need to verify the loss isn't simply a too-large
+# gamma floor. gammas="0.01,0.03,0.1,0.3,1,3,10" spans three decades
+# below the previous minimum.
 #
 # Override on submit, e.g.:
-#     qsub -v N_SEEDS=5,DROPOUT=0.5,GAMMA=50 hpc/run_edlae_multiseed.pbs
+#     qsub -v N_SEEDS=5,DROPOUT=0.5,GAMMAS="0.1,1,10" \
+#          hpc/run_edlae_multiseed.pbs
+#     qsub -v GAMMA=50 hpc/run_edlae_multiseed.pbs          # legacy
 # =====================================================================
 #PBS -N lap_edlae_multiseed
 #PBS -q cpu
@@ -23,7 +34,12 @@ source hpc/_prologue.sh
 
 N_SEEDS="${N_SEEDS:-5}"
 DROPOUT="${DROPOUT:-0.5}"
-GAMMA="${GAMMA:-50}"
+# GAMMAS is the primary way to drive the sweep. The default spans
+# 0.01 -> 10 on a log grid so we sweep under and through the region
+# where the first primary run lost to EDLAE. Use GAMMA for a single
+# legacy value (still merged into the list inside the Python script).
+GAMMAS="${GAMMAS:-0.01,0.03,0.1,0.3,1,3,10}"
+GAMMA="${GAMMA:-}"
 GRAPH_SOURCE="${GRAPH_SOURCE:-rp3beta}"
 RP3_BETA="${RP3_BETA:-0.3}"
 LAMBDA_="${LAMBDA_:-500}"
@@ -35,12 +51,18 @@ if [[ -n "${SPLIT_SEEDS:-}" ]]; then
     SPLIT_SEEDS_ARG="--split_seeds $SPLIT_SEEDS"
 fi
 
+GAMMA_ARG=""
+if [[ -n "$GAMMA" ]]; then
+    GAMMA_ARG="--gamma $GAMMA"
+fi
+
 python -m experiments.edlae_multiseed \
     --dataset ml-1m \
     --k 10 \
     --lambda_ "$LAMBDA_" \
     --dropout "$DROPOUT" \
-    --gamma "$GAMMA" \
+    --gammas "$GAMMAS" \
+    $GAMMA_ARG \
     --graph_source "$GRAPH_SOURCE" \
     --rp3_beta "$RP3_BETA" \
     --normalise "$NORMALISE" \

@@ -2,8 +2,12 @@
 SLIM baseline + Laplacian-regularized SLIM.
 
 Runs:
-    1) Vanilla SLIM (ElasticNet, non-negative, per-item CD).
-    2) Laplacian-SLIM for a grid of gamma values (ISTA solver).
+    1) Vanilla SLIM on a 3x3 (alpha, l1_ratio) ElasticNet grid to pick
+       the best-tuned SLIM baseline (earlier runs used a single
+       undertuned config, which put SLIM below EASE and made the
+       "SLIM-Lap > SLIM" claim suspect).
+    2) Laplacian-SLIM for a grid of gamma values (ISTA solver) on top
+       of the best-tuned SLIM hyper-parameters.
 
 Compares both against EASE as reference. Writes a CSV + NDCG-vs-gamma
 plot under ``results/slim/``.
@@ -12,6 +16,17 @@ SLIM fits column-by-column and is much slower than EASE. On ``ml-small``
 it takes ~20-40 s; on ``ml-1m`` it is not practical without further
 optimisation -- for thesis purposes, use ml-small for SLIM experiments
 and demonstrate that the Laplacian generalisation applies to SLIM too.
+
+Hyperparameter sweep contract:
+    * If the caller passes explicit ``l1_reg``/``beta``, we run a
+      single-point fit (back-compat and smoke-test contract).
+    * Otherwise we sweep
+          alpha    in {1e-4, 1e-3, 1e-2}
+          l1_ratio in {0.1, 0.5, 0.9}
+      (9 configurations) and pick the row with the best NDCG@k as the
+      "SLIM" reference for the Laplacian comparison. All 9 grid rows
+      are written to the CSV (model="SLIM", columns ``slim_alpha``,
+      ``slim_l1_ratio``) so the table is auditable.
 
 Example:
     python -m experiments.slim_experiments --dataset ml-small --k 10
@@ -63,15 +78,54 @@ def _scale_laplacian(L, G_diag_mean):
 
 
 def run(dataset='ml-small', k=10,
-        l1_reg=1e-4, beta=1e-3, positive=True,
+        l1_reg=None, beta=None, positive=True,
+        alphas=None, l1_ratios=None,
         gammas=None, graph_source='rp3beta',
         rp3_beta=0.6, topK=200,
+        max_iter=5000, tol=1e-4,
         n_iter=200,
         normalise='none', ks=(10, 20),
         out_dir=None):
+    """Run vanilla SLIM (optionally on a (alpha, l1_ratio) grid) and a
+    Laplacian-SLIM gamma sweep on top of the best SLIM configuration.
+
+    Parameters
+    ----------
+    l1_reg, beta : float or None
+        Single-point ElasticNet regularisation. If EITHER is non-None
+        the grid is skipped and one SLIM row is produced -- this keeps
+        back-compat with older smoke tests and ad-hoc calls.
+    alphas : Sequence[float] or None
+        ElasticNet ``alpha = l1_reg + beta`` values to grid over when
+        ``l1_reg``/``beta`` are not supplied. Default: [1e-4, 1e-3, 1e-2].
+    l1_ratios : Sequence[float] or None
+        ElasticNet ``l1_ratio = l1_reg / alpha`` values. Default:
+        [0.1, 0.5, 0.9].
+    max_iter : int
+        Per-column CD iterations (default 5000, see ``SLIM.fit`` docstring
+        for why 1000 is too low).
+    """
     if gammas is None:
         gammas = [0.3, 1.0, 3.0, 10.0, 30.0]
     ks = tuple(sorted(set(list(ks) + [k])))
+
+    # ---- Resolve the (alpha, l1_ratio) grid ----
+    # Legacy single-point path: caller supplied explicit l1_reg and/or
+    # beta. We leave any missing value at the old single-point default
+    # so older scripts still work.
+    if (l1_reg is not None) or (beta is not None):
+        l1_reg_eff = 1e-4 if l1_reg is None else l1_reg
+        beta_eff   = 1e-3 if beta   is None else beta
+        alpha_here = l1_reg_eff + beta_eff
+        ratio_here = l1_reg_eff / (alpha_here + 1e-12)
+        slim_grid = [(alpha_here, ratio_here)]
+    else:
+        if alphas is None:
+            alphas = [1e-4, 1e-3, 1e-2]
+        if l1_ratios is None:
+            l1_ratios = [0.1, 0.5, 0.9]
+        slim_grid = [(float(a), float(r))
+                     for a in alphas for r in l1_ratios]
 
     out_dir = ensure_results_dir('slim' if out_dir is None else out_dir)
 
@@ -81,36 +135,55 @@ def run(dataset='ml-small', k=10,
 
     rows = []
 
-    # ---- 1) Vanilla SLIM ----
-    print("\n[SLIM] vanilla (ElasticNet)")
-    t0 = time.time()
-    slim = SLIM()
-    slim.fit(train, l1_reg=l1_reg, beta=beta, positive=positive,
-             max_iter=30, tol=1e-4)
-    t_slim = time.time() - t0
-    res_slim = evaluate_at_ks(_StandaloneWrapper(slim), train,
-                              test_positive, ks=ks)
-    print(f"  SLIM NDCG@{k}={res_slim[f'NDCG@{k}']:.4f} "
-          f"NDCG@{max(ks)}={res_slim[f'NDCG@{max(ks)}']:.4f} "
-          f"({t_slim:.1f}s)")
-    _row = {
-        'dataset': dataset, 'model': 'SLIM',
-        'gamma': 0.0, 'graph_source': None, 'normalise': None,
-        'train_time_s': t_slim,
-    }
-    _row.update(metric_cols_at_ks(res_slim, ks, primary_k=k))
-    # SLIM is the main baseline in this script.
-    _row.update(wilcoxon_blank_columns('wilcoxon_vs_SLIM'))
-    _row.update(wilcoxon_blank_columns('wilcoxon_vs_EASE'))
-    rows.append(_row)
-    _slim_buckets = bucketed_metrics_at_ks(
-        _StandaloneWrapper(slim), train, test_positive,
-        ks=ks, bucket_of=bucket_of)
-    bucket_rows_all.extend(
-        bucket_rows({'dataset': dataset, 'model': 'SLIM',
-                     'gamma': 0.0, 'graph_source': None,
-                     'normalise': None},
-                    _slim_buckets, ks, n_buckets=5))
+    # ---- 1) Vanilla SLIM sweep over (alpha, l1_ratio) ----
+    print(f"\n[SLIM] vanilla ElasticNet grid -- {len(slim_grid)} configs, "
+          f"max_iter={max_iter}")
+    slim_results = []        # list of (alpha, l1_ratio, slim_model, res, t)
+    for alpha_v, ratio_v in slim_grid:
+        l1_part = alpha_v * ratio_v
+        l2_part = alpha_v * (1.0 - ratio_v)
+        t0 = time.time()
+        slim = SLIM()
+        slim.fit(train, l1_reg=l1_part, beta=l2_part, positive=positive,
+                 max_iter=max_iter, tol=tol)
+        t_slim = time.time() - t0
+        res_slim = evaluate_at_ks(_StandaloneWrapper(slim), train,
+                                  test_positive, ks=ks)
+        print(f"  SLIM alpha={alpha_v:<9g} l1_ratio={ratio_v:<4g} "
+              f"NDCG@{k}={res_slim[f'NDCG@{k}']:.4f} "
+              f"NDCG@{max(ks)}={res_slim[f'NDCG@{max(ks)}']:.4f} "
+              f"({t_slim:.1f}s)")
+        _row = {
+            'dataset': dataset, 'model': 'SLIM',
+            'gamma': 0.0, 'graph_source': None, 'normalise': None,
+            'slim_alpha': alpha_v, 'slim_l1_ratio': ratio_v,
+            'train_time_s': t_slim,
+        }
+        _row.update(metric_cols_at_ks(res_slim, ks, primary_k=k))
+        _row.update(wilcoxon_blank_columns('wilcoxon_vs_SLIM'))
+        _row.update(wilcoxon_blank_columns('wilcoxon_vs_EASE'))
+        rows.append(_row)
+        _slim_buckets = bucketed_metrics_at_ks(
+            _StandaloneWrapper(slim), train, test_positive,
+            ks=ks, bucket_of=bucket_of)
+        bucket_rows_all.extend(
+            bucket_rows({'dataset': dataset, 'model': 'SLIM',
+                         'gamma': 0.0, 'graph_source': None,
+                         'normalise': None,
+                         'slim_alpha': alpha_v,
+                         'slim_l1_ratio': ratio_v},
+                        _slim_buckets, ks, n_buckets=5))
+        slim_results.append((alpha_v, ratio_v, slim, res_slim, t_slim))
+
+    # Pick best SLIM by NDCG@k; that's the reference the Laplacian
+    # variants are compared against. Using the best config avoids the
+    # "undertuned baseline" critique -- if Lap still wins here, it
+    # wins against a well-tuned competitor.
+    best_idx = int(np.argmax([r[3][f'NDCG@{k}'] for r in slim_results]))
+    best_alpha, best_ratio, slim, res_slim, _ = slim_results[best_idx]
+    print(f"\n  [SLIM baseline picked] alpha={best_alpha:g} "
+          f"l1_ratio={best_ratio:g} "
+          f"NDCG@{k}={res_slim[f'NDCG@{k}']:.4f}")
 
     # ---- 2) EASE reference (same data) ----
     print("\n[reference] EASE")
@@ -153,13 +226,19 @@ def run(dataset='ml-small', k=10,
         X.multiply(X).sum(axis=0)).flatten()))  # ≈ mean(diag(X^T X))
     L_scaled = _scale_laplacian(L_dense, G_diag_mean)
 
-    # ---- 4) Laplacian SLIM sweep ----
+    # ---- 4) Laplacian SLIM sweep on top of the best SLIM config ----
+    # Use the winning (alpha, l1_ratio) from the vanilla grid as the
+    # Laplacian's ridge / L1 strengths too. This keeps the comparison
+    # fair: the Laplacian adds a *third* term on top of an already-
+    # well-tuned SLIM, rather than competing against a crippled SLIM.
+    lap_l1 = best_alpha * best_ratio
+    lap_l2 = best_alpha * (1.0 - best_ratio)
     for gamma in gammas:
         print(f"\n[SLIM-Laplacian] gamma={gamma}  normalise={normalise}")
         t0 = time.time()
         slim_lap = SLIM()
         slim_lap.fit_laplacian(
-            train, L_scaled=L_scaled, beta=beta, l1_reg=l1_reg,
+            train, L_scaled=L_scaled, beta=lap_l2, l1_reg=lap_l1,
             gamma=gamma, positive=positive, n_iter=n_iter,
         )
         t = time.time() - t0
@@ -181,7 +260,9 @@ def run(dataset='ml-small', k=10,
         _row = {
             'dataset': dataset, 'model': 'SLIM-Laplacian',
             'gamma': gamma, 'graph_source': graph_source,
-            'normalise': normalise, 'train_time_s': t,
+            'normalise': normalise,
+            'slim_alpha': best_alpha, 'slim_l1_ratio': best_ratio,
+            'train_time_s': t,
         }
         _row.update(metric_cols_at_ks(res, ks, primary_k=k))
         _row.update(wilcoxon_columns('wilcoxon_vs_SLIM', w_slim))
@@ -195,7 +276,9 @@ def run(dataset='ml-small', k=10,
                          'model': 'SLIM-Laplacian',
                          'gamma': gamma,
                          'graph_source': graph_source,
-                         'normalise': normalise},
+                         'normalise': normalise,
+                         'slim_alpha': best_alpha,
+                         'slim_l1_ratio': best_ratio},
                         _lap_buckets, ks, n_buckets=5))
 
     df = pd.DataFrame(rows)
@@ -238,8 +321,26 @@ def main():
     p.add_argument('--dataset', default='ml-small',
                    choices=['ml-small', 'ml-1m'])
     p.add_argument('--k', type=int, default=10)
-    p.add_argument('--l1_reg', type=float, default=1e-4)
-    p.add_argument('--beta', type=float, default=1e-3)
+    # Single-point overrides: if EITHER is supplied we skip the grid
+    # and run one SLIM fit at those exact values.
+    p.add_argument('--l1_reg', type=float, default=None,
+                   help='Single-point L1 strength. If given (together '
+                        'with --beta, or alone), overrides the '
+                        '--alphas/--l1_ratios grid sweep.')
+    p.add_argument('--beta', type=float, default=None,
+                   help='Single-point L2 strength. See --l1_reg.')
+    # 3x3 grid (default). Both lists can be extended/shortened.
+    p.add_argument('--alphas', type=str, default=None,
+                   help='Comma-separated ElasticNet alpha (=l1+l2) grid. '
+                        'Default: "1e-4,1e-3,1e-2".')
+    p.add_argument('--l1_ratios', type=str, default=None,
+                   help='Comma-separated ElasticNet l1_ratio grid. '
+                        'Default: "0.1,0.5,0.9".')
+    p.add_argument('--max_iter', type=int, default=5000,
+                   help='Per-column CD iterations cap (default 5000; '
+                        'lower values trigger sklearn convergence '
+                        'warnings and depress the SLIM baseline).')
+    p.add_argument('--tol', type=float, default=1e-4)
     p.add_argument('--graph_source', default='rp3beta')
     p.add_argument('--rp3_beta', type=float, default=0.6)
     p.add_argument('--topK', type=int, default=200)
@@ -259,10 +360,21 @@ def main():
     if args.gammas:
         gammas = [float(x) for x in args.gammas.split(',')]
 
+    alphas = None
+    if args.alphas:
+        alphas = [float(x) for x in args.alphas.split(',') if x.strip()]
+
+    l1_ratios = None
+    if args.l1_ratios:
+        l1_ratios = [float(x)
+                     for x in args.l1_ratios.split(',') if x.strip()]
+
     ks = tuple(int(x) for x in args.ks.split(',') if x.strip())
 
     run(dataset=args.dataset, k=args.k,
         l1_reg=args.l1_reg, beta=args.beta,
+        alphas=alphas, l1_ratios=l1_ratios,
+        max_iter=args.max_iter, tol=args.tol,
         gammas=gammas, graph_source=args.graph_source,
         rp3_beta=args.rp3_beta, topK=args.topK,
         n_iter=args.n_iter, normalise=args.normalise, ks=ks)

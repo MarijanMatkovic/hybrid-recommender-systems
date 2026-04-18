@@ -58,7 +58,7 @@ class SLIM:
         return X
 
     def fit(self, df, l1_reg=1e-3, beta=1e-3, implicit=True,
-            positive=True, max_iter=50, tol=1e-4, alpha_scale=1.0):
+            positive=True, max_iter=5000, tol=1e-4, alpha_scale=1.0):
         """
         Standard SLIM via per-item ElasticNet.
 
@@ -72,7 +72,14 @@ class SLIM:
         positive : bool
             Enforce W >= 0 (original SLIM constraint).
         max_iter : int
-            ElasticNet coordinate-descent iterations per column.
+            ElasticNet coordinate-descent iterations per column. The
+            default (5000) is generous on purpose -- earlier runs with
+            ``max_iter=1000`` routinely hit sklearn's ConvergenceWarning
+            ("Objective did not converge. ... Duality gap ..."), which
+            made the per-item columns slightly under-fit and depressed
+            the SLIM baseline below EASE. sklearn stops early once the
+            duality gap drops below ``tol``, so bumping the cap costs
+            wall-clock only on the genuinely stiff columns.
         alpha_scale : float
             Multiplier applied to both (l1_reg + beta) -- useful for
             quick sensitivity scans.

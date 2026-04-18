@@ -3,9 +3,17 @@
 # SLIM + Laplacian-SLIM sweep on ml-1m.
 #
 # SLIM is the SLOW experiment: per-item coordinate descent runs column
-# by column, and on ml-1m there are ~3700 items. Budget 20 hours of
-# walltime and 64 GB of RAM to be safe. If it runs out of time, reduce
-# the gamma grid or drop max_iter in slim_experiments.py.
+# by column, and on ml-1m there are ~3700 items.
+#
+# The experiment now sweeps a 3x3 (alpha, l1_ratio) ElasticNet grid to
+# find a well-tuned SLIM baseline before ablating the Laplacian term
+# on top. The previous single-point fit ran below EASE and made the
+# "SLIM-Lap > SLIM" claim look artefactual -- a tuned baseline is
+# necessary for a defensible comparison.
+#
+# Budget 20 hours of walltime and 64 GB of RAM to be safe. If it
+# runs out of time, shrink --alphas / --l1_ratios / --gammas via
+# qsub -v overrides below.
 # =====================================================================
 #PBS -N lap_slim
 #PBS -q cpu
@@ -34,9 +42,21 @@ NORMALISE="${NORMALISE:-none}"
 GAMMAS="${GAMMAS:-1,3,10,30,75}"
 N_ITER="${N_ITER:-150}"
 
+# ElasticNet hyperparameter grid defaults (3x3 = 9 SLIM fits before the
+# Laplacian ablation starts). The script picks the best (alpha,
+# l1_ratio) by NDCG@10 and uses it as the baseline. If the sweep blows
+# the walltime budget, shrink these lists:
+#     qsub -v ALPHAS="1e-3",L1_RATIOS="0.5" hpc/run_slim.pbs
+ALPHAS="${ALPHAS:-1e-4,1e-3,1e-2}"
+L1_RATIOS="${L1_RATIOS:-0.1,0.5,0.9}"
+MAX_ITER="${MAX_ITER:-5000}"
+
 python -m experiments.slim_experiments \
     --dataset ml-1m \
     --k 10 \
+    --alphas "$ALPHAS" \
+    --l1_ratios "$L1_RATIOS" \
+    --max_iter "$MAX_ITER" \
     --gammas "$GAMMAS" \
     --n_iter "$N_ITER" \
     --topK 200 \

@@ -153,8 +153,8 @@ rsync -avz supek.srce.hr:~/diplomski/logs/    ./logs/
 
 | Job                          | CPUs | RAM  | Walltime | Why                                                          |
 |------------------------------|------|------|----------|--------------------------------------------------------------|
-| `run_primary_multiseed.pbs`  | 8    | 32GB | 8h       | 6 families × ~30 configs × 5 seeds (~900 fits on ml-1m)      |
-| `run_main_baselines.pbs`     | 8    | 32GB | 2h       | Same grid, single temporal split (1 seed)                    |
+| `run_primary_multiseed.pbs`  | 8    | 32GB | 20h      | 6 families × ~30 configs × 5 seeds (~900 fits on ml-1m); bumped from 8h after previous runs hit the limit |
+| `run_main_baselines.pbs`     | 8    | 32GB | 6h       | Same grid, single temporal split (1 seed); bumped from 2h after it was walltime-killed |
 | `run_edlae.pbs`              | 8    | 32GB | 2h       | Closed-form, cheap                                           |
 | `run_graph_ablation.pbs`     | 8    | 32GB | 6h       | Four graph sources x gamma grid                              |
 | `run_gamma_sensitivity.pbs`  | 8    | 32GB | 6h       | Wide log-scale gamma grid (12 values)                        |

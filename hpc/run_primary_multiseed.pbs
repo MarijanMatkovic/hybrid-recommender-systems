@@ -12,8 +12,12 @@
 # Rough budget on Supek (cray-python/3.11.7, 8 cpus):
 #     ~30 configs/family * 6 families * 5 seeds =~ 900 fits
 #     ml-1m EASE closed-form ~8-15s, Laplacian-EASE ~20-30s
-#  -> median ~15s/fit * 900 ~=~ 3.75 h worst case. Walltime is 8 h for
-#     safety (rebuild overhead, per-seed cold caches, stale modules).
+#  -> median ~15s/fit * 900 ~=~ 3.75 h nominal, but the previous 8 h
+#     walltime was already cutting it close once Laplacian-EASE per-seed
+#     grid rebuilds and Wilcoxon/pooled-seeds post-processing were added.
+#     Bumped to 20 h so we're not fighting the scheduler on the thesis
+#     headline job -- better to reserve and finish early than to lose
+#     an overnight run to a 10-minute overrun.
 #
 # Overrides:
 #     qsub -v DATASET=ml-small hpc/run_primary_multiseed.pbs
@@ -23,7 +27,7 @@
 #PBS -N lap_primary_multi
 #PBS -q cpu
 #PBS -l select=1:ncpus=8:mem=32gb
-#PBS -l walltime=08:00:00
+#PBS -l walltime=20:00:00
 #PBS -j oe
 #PBS -o logs/primary_multiseed.log
 

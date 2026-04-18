@@ -135,7 +135,12 @@ def run(dataset='ml-small', k=10,
     if gamma is not None:
         gamma_list.append(float(gamma))
     if not gamma_list:
-        gamma_list = [30.0]
+        # Default: wide log-scale grid spanning three decades below
+        # and two above gamma=1. Earlier defaults sat at a single
+        # mid-range value (30.0); the 5-seed primary sweep revealed
+        # that the small-gamma region (<=1) was never tested, so the
+        # baseline default sweeps it by default now.
+        gamma_list = [0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0]
     # De-duplicate while preserving order so the log reads naturally.
     seen = set()
     gamma_list = [g for g in gamma_list

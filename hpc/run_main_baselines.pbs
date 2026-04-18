@@ -6,8 +6,12 @@
 # ones -- a method that wins on temporal but loses on primary is flagged
 # as *protocol-dependent* rather than a generic improvement.
 #
-# Much cheaper than the primary job (1 seed instead of 5), so walltime
-# is 2h. Budget ~30 configs/family * 6 families =~ 180 fits -> <1h.
+# Much cheaper than the primary job (1 seed instead of 5). Budget
+# ~30 configs/family * 6 families =~ 180 fits at ~15-30s each on ml-1m,
+# so 1-2h nominal. The previous 2h walltime actually killed the run --
+# Laplacian-EASE rebuilds + Wilcoxon post-processing pushed it past the
+# limit. Bumped to 6h for parity safety with the primary job's new
+# budget; still cheap enough to resubmit freely.
 #
 # Overrides:
 #     qsub -v DATASET=ml-small hpc/run_main_baselines.pbs
@@ -16,7 +20,7 @@
 #PBS -N lap_main_temporal
 #PBS -q cpu
 #PBS -l select=1:ncpus=8:mem=32gb
-#PBS -l walltime=02:00:00
+#PBS -l walltime=06:00:00
 #PBS -j oe
 #PBS -o logs/main_baselines.log
 
