@@ -28,10 +28,15 @@ from evaluation.metrics import evaluate_at_ks
 from models import HybridEASE_RP3beta
 
 from experiments._shared import (
+    bucket_rows,
+    bucketed_metrics_at_ks,
     ensure_results_dir,
+    item_popularity_buckets,
     load_dataset,
+    metric_cols_at_ks,
     wilcoxon_columns,
     wilcoxon_vs_baseline,
+    write_buckets_csv,
 )
 
 
@@ -54,6 +59,13 @@ def run(dataset='ml-small', k=10,
                                  if out_dir is None else out_dir)
 
     train, test_positive, _ = load_dataset(dataset)
+    # One bucketing of items by train popularity, reused across every
+    # (lambda, rp3_beta, gamma) cell so per-bucket rows are directly
+    # comparable. Five buckets = q1..q5 from most to least popular.
+    bucket_of = item_popularity_buckets(train, n_buckets=5)
+    # Buffer of per-bucket rows accumulated across the whole sweep and
+    # flushed once at the end as a companion ``_buckets.csv``.
+    bucket_rows_all = []
 
     rows = []
     # Per-lambda EASE baseline (no Laplacian): used as the reference model
@@ -77,6 +89,18 @@ def run(dataset='ml-small', k=10,
               f"NDCG@{max(ks)}={res_base[f'NDCG@{max(ks)}']:.4f} "
               f"({dt_base:.1f}s)")
         baselines[lam] = res_base
+        # Emit the per-bucket EASE rows so the companion CSV has an
+        # anchor every consumer can diff against.
+        base_buckets = bucketed_metrics_at_ks(
+            base, train, test_positive, ks=ks, bucket_of=bucket_of)
+        base_row_meta = {
+            'dataset': dataset, 'model': 'EASE',
+            'lambda': lam, 'rp3_beta': rp3_betas[0],
+            'graph_source': None, 'normalise': None,
+            'gamma': 0.0,
+        }
+        bucket_rows_all.extend(
+            bucket_rows(base_row_meta, base_buckets, ks, n_buckets=5))
 
     for lam in lambdas:
         res_base = baselines[lam]
@@ -106,17 +130,25 @@ def run(dataset='ml-small', k=10,
                     'gamma': gamma,
                     'train_time_s': dt,
                 }
-                for kk in ks:
-                    for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
-                        row[f'{m}@{kk}'] = res[f'{m}@{kk}']
-                # Back-compat aliases at the primary k used for the plot.
-                row['NDCG@k']    = res[f'NDCG@{k}']
-                row['MAP@k']     = res[f'MAP@{k}']
-                row['HitRate@k'] = res[f'HitRate@{k}']
-                row['Recall@k']  = res[f'Recall@{k}']
+                # Accuracy + diversity metrics at every k (plus the
+                # ``@k`` aliases at the primary k for the plot).
+                row.update(metric_cols_at_ks(res, ks, primary_k=k))
                 row.update(wilcoxon_columns('wilcoxon_vs_EASE',
                                              w_result))
                 rows.append(row)
+                # Per-bucket NDCG/Recall/HitRate for this cell.
+                lap_buckets = bucketed_metrics_at_ks(
+                    model, train, test_positive, ks=ks,
+                    bucket_of=bucket_of)
+                lap_row_meta = {
+                    'dataset': dataset, 'model': 'Laplacian-EASE',
+                    'lambda': lam, 'rp3_beta': rp3_b,
+                    'graph_source': graph_source,
+                    'normalise': normalise, 'gamma': gamma,
+                }
+                bucket_rows_all.extend(
+                    bucket_rows(lap_row_meta, lap_buckets, ks,
+                                n_buckets=5))
                 sign_str = (f'{w_sign:+d}'
                             if w_sign != 0 else ' 0')
                 print(f"  gamma={gamma:<8.3f} "
@@ -128,9 +160,15 @@ def run(dataset='ml-small', k=10,
 
     df = pd.DataFrame(rows)
     suffix = '_sym' if normalise == 'sym' else ''
-    csv_path = out_dir / f'gamma_sensitivity_{dataset}{suffix}.csv'
+    stem = f'gamma_sensitivity_{dataset}{suffix}'
+    csv_path = out_dir / f'{stem}.csv'
     df.to_csv(csv_path, index=False)
     print(f"\nSaved CSV to {csv_path}")
+    # Companion per-bucket CSV (one row per bucket × config cell). See
+    # ``experiments/_shared.bucketed_metrics_at_ks`` for semantics.
+    bpath = write_buckets_csv(out_dir, stem, bucket_rows_all)
+    if bpath is not None:
+        print(f"Saved per-bucket CSV to {bpath}")
 
     # ---- Plot NDCG vs gamma (log x) ----
     fig, ax = plt.subplots(figsize=(7, 4.5))

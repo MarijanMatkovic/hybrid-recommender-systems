@@ -31,11 +31,16 @@ from models import HybridEASE_RP3beta
 from models.graph_sources import VALID_SOURCES
 
 from experiments._shared import (
+    bucket_rows,
+    bucketed_metrics_at_ks,
     ensure_results_dir,
+    item_popularity_buckets,
     load_dataset,
+    metric_cols_at_ks,
     wilcoxon_blank_columns,
     wilcoxon_columns,
     wilcoxon_vs_baseline,
+    write_buckets_csv,
 )
 
 
@@ -57,6 +62,8 @@ def run(dataset='ml-small', k=10,
                                  if out_dir is None else out_dir)
 
     train, test_positive, _ = load_dataset(dataset)
+    bucket_of = item_popularity_buckets(train, n_buckets=5)
+    bucket_rows_all = []
 
     rows = []
     # Baseline: EASE with no Laplacian (gamma=0 via the standard path).
@@ -103,15 +110,23 @@ def run(dataset='ml-small', k=10,
                 'topK': topK,
                 'train_time_s': dt,
             }
-            for kk in ks:
-                for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
-                    row[f'{m}@{kk}'] = res[f'{m}@{kk}']
-            row['NDCG@k']    = res[f'NDCG@{k}']
-            row['MAP@k']     = res[f'MAP@{k}']
-            row['HitRate@k'] = res[f'HitRate@{k}']
-            row['Recall@k']  = res[f'Recall@{k}']
+            row.update(metric_cols_at_ks(res, ks, primary_k=k))
             row.update(wilcoxon_columns('wilcoxon_vs_EASE', w_result))
             rows.append(row)
+            # Per-bucket row for the Laplacian cell.
+            lap_buckets = bucketed_metrics_at_ks(
+                model, train, test_positive, ks=ks,
+                bucket_of=bucket_of)
+            bucket_rows_all.extend(
+                bucket_rows({'dataset': dataset,
+                             'model': 'Laplacian-EASE',
+                             'source': source,
+                             'normalise': normalise,
+                             'ease_lambda': ease_lambda,
+                             'rp3_beta': rp3_beta,
+                             'topK': topK,
+                             'gamma': gamma},
+                            lap_buckets, ks, n_buckets=5))
             # The p-value alone is ambiguous about direction, so the
             # log line reports the sign too (+1 = model wins, -1 = loses).
             sign_str = f'{w_sign:+d}' if w_sign != 0 else ' 0'
@@ -123,9 +138,13 @@ def run(dataset='ml-small', k=10,
 
     df = pd.DataFrame(rows)
     suffix = '_sym' if normalise == 'sym' else ''
-    csv_path = out_dir / f'graph_source_ablation_{dataset}{suffix}.csv'
+    stem = f'graph_source_ablation_{dataset}{suffix}'
+    csv_path = out_dir / f'{stem}.csv'
     df.to_csv(csv_path, index=False)
     print(f"\nSaved CSV to {csv_path}")
+    bpath = write_buckets_csv(out_dir, stem, bucket_rows_all)
+    if bpath is not None:
+        print(f"Saved per-bucket CSV to {bpath}")
 
     # ---- Plot NDCG vs gamma per source ----
     fig, ax = plt.subplots(figsize=(7.5, 4.8))

@@ -43,9 +43,14 @@ from models import EDLAE, build_graph, build_laplacian
 from models.hybrid import HybridEASE_RP3beta
 
 from experiments._shared import (
+    bucket_rows,
+    bucketed_metrics_at_ks,
     ensure_results_dir,
+    item_popularity_buckets,
     load_dataset,
+    metric_cols_at_ks,
     wilcoxon_paired,
+    write_buckets_csv,
 )
 
 
@@ -144,6 +149,10 @@ def run(dataset='ml-small', k=10,
     # paired Wilcoxon tests at the end. Each value is
     # (model_key, seed) -> (per_user_ndcg_at_k, per_user_ids).
     per_user_store = {}
+    # Per-bucket rows accumulated across (seed, model, gamma) cells.
+    # Bucket-of-item maps are re-derived from each seed's train split,
+    # since per-seed splits produce different popularity rankings.
+    bucket_rows_all = []
 
     for seed in split_seeds:
         print(f"\n{'=' * 60}")
@@ -153,6 +162,7 @@ def run(dataset='ml-small', k=10,
         train, test_positive, _ = load_dataset(dataset,
                                                split_mode='random',
                                                split_seed=seed)
+        bucket_of = item_popularity_buckets(train, n_buckets=5)
 
         # --- EASE reference ---
         t0 = time.time()
@@ -171,14 +181,20 @@ def run(dataset='ml-small', k=10,
                     'dropout': 0.0, 'gamma': 0.0,
                     'graph_source': None, 'normalise': None,
                     'train_time_s': t_ease}
-        for kk in ks:
-            for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
-                row_ease[f'{m}@{kk}'] = res_ease[f'{m}@{kk}']
+        row_ease.update(metric_cols_at_ks(res_ease, ks, primary_k=k))
         per_seed_rows.append(row_ease)
         per_user_store[('EASE', 0.0, seed)] = (
             res_ease['per_user_ndcg'][k],
             res_ease['per_user_ids'],
         )
+        _ease_buckets = bucketed_metrics_at_ks(
+            ease_ref, train, test_positive, ks=ks, bucket_of=bucket_of)
+        bucket_rows_all.extend(
+            bucket_rows({'dataset': dataset, 'seed': seed,
+                         'model': 'EASE',
+                         'dropout': 0.0, 'gamma': 0.0,
+                         'graph_source': None, 'normalise': None},
+                        _ease_buckets, ks, n_buckets=5))
 
         # --- EDLAE baseline ---
         t0 = time.time()
@@ -195,14 +211,21 @@ def run(dataset='ml-small', k=10,
                    'dropout': dropout, 'gamma': 0.0,
                    'graph_source': None, 'normalise': None,
                    'train_time_s': t_edl}
-        for kk in ks:
-            for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
-                row_edl[f'{m}@{kk}'] = res_edl[f'{m}@{kk}']
+        row_edl.update(metric_cols_at_ks(res_edl, ks, primary_k=k))
         per_seed_rows.append(row_edl)
         per_user_store[('EDLAE', 0.0, seed)] = (
             res_edl['per_user_ndcg'][k],
             res_edl['per_user_ids'],
         )
+        _edl_buckets = bucketed_metrics_at_ks(
+            _StandaloneWrapper(edlae), train, test_positive,
+            ks=ks, bucket_of=bucket_of)
+        bucket_rows_all.extend(
+            bucket_rows({'dataset': dataset, 'seed': seed,
+                         'model': 'EDLAE',
+                         'dropout': dropout, 'gamma': 0.0,
+                         'graph_source': None, 'normalise': None},
+                        _edl_buckets, ks, n_buckets=5))
 
         # --- Build L once per seed (depends on the split's train X) ---
         X = ease_ref.ease.X
@@ -223,7 +246,7 @@ def run(dataset='ml-small', k=10,
             t_lap = time.time() - t0
             res_lap = evaluate_at_ks(_StandaloneWrapper(edlae_lap), train,
                                      test_positive, ks=ks)
-            print(f"  EDLAE-Lap γ={g_val:<5g} "
+            print(f"  EDLAE-Lap gamma={g_val:<5g} "
                   f"NDCG@{k}={res_lap[f'NDCG@{k}']:.4f}  "
                   f"NDCG@{max(ks)}={res_lap[f'NDCG@{max(ks)}']:.4f} "
                   f"({t_lap:.1f}s)")
@@ -234,30 +257,49 @@ def run(dataset='ml-small', k=10,
                        'graph_source': graph_source,
                        'normalise': normalise,
                        'train_time_s': t_lap}
-            for kk in ks:
-                for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
-                    row_lap[f'{m}@{kk}'] = res_lap[f'{m}@{kk}']
+            row_lap.update(metric_cols_at_ks(res_lap, ks, primary_k=k))
             per_seed_rows.append(row_lap)
             per_user_store[('EDLAE-Laplacian', g_val, seed)] = (
                 res_lap['per_user_ndcg'][k],
                 res_lap['per_user_ids'],
             )
+            _lap_buckets = bucketed_metrics_at_ks(
+                _StandaloneWrapper(edlae_lap), train, test_positive,
+                ks=ks, bucket_of=bucket_of)
+            bucket_rows_all.extend(
+                bucket_rows({'dataset': dataset, 'seed': seed,
+                             'model': 'EDLAE-Laplacian',
+                             'dropout': dropout, 'gamma': g_val,
+                             'graph_source': graph_source,
+                             'normalise': normalise},
+                            _lap_buckets, ks, n_buckets=5))
 
     # ---- Long-form per-seed CSV ----
     df = pd.DataFrame(per_seed_rows)
     suffix = '_sym' if normalise == 'sym' else ''
-    csv_path = out_dir / f'edlae_multiseed_{dataset}{suffix}.csv'
+    stem = f'edlae_multiseed_{dataset}{suffix}'
+    csv_path = out_dir / f'{stem}.csv'
     df.to_csv(csv_path, index=False)
     print(f"\nSaved per-seed CSV to {csv_path}")
 
+    # Companion per-(seed, bucket) CSV. Consumers typically group by
+    # ``bucket`` and aggregate mean ± std across ``seed`` to get a
+    # per-bucket CI just like the accuracy summary below.
+    bpath = write_buckets_csv(out_dir, stem, bucket_rows_all)
+    if bpath is not None:
+        print(f"Saved per-bucket per-seed CSV to {bpath}")
+
     # ---- Aggregated summary ----
-    metric_cols = [f'{m}@{kk}' for kk in ks
-                   for m in ('NDCG', 'MAP', 'HitRate', 'Recall')]
+    # All accuracy + diversity metrics at all ks are aggregated across
+    # seeds so the summary CSV carries mean/std/count for every
+    # metric consumers might want to plot.
+    from experiments._shared import STANDARD_METRICS
+    metric_cols = [f'{m}@{kk}' for kk in ks for m in STANDARD_METRICS]
     summary = _summarise(per_seed_rows,
                          group_keys=('dataset', 'model',
                                      'dropout', 'gamma', 'graph_source'),
                          metric_keys=metric_cols)
-    sum_path = out_dir / f'edlae_multiseed_{dataset}{suffix}_summary.csv'
+    sum_path = out_dir / f'{stem}_summary.csv'
     summary.to_csv(sum_path, index=False)
     print(f"Saved aggregated summary to {sum_path}")
 
@@ -279,31 +321,37 @@ def run(dataset='ml-small', k=10,
              for s in split_seeds])
         w_vs_ease  = wilcoxon_paired(ease_pool,  lap_pool)
         w_vs_edlae = wilcoxon_paired(edlae_pool, lap_pool)
+        # 6-tuple: (stat, p, n_pairs, sign, mean_diff, median_diff).
+        # ``sign`` is based on the mean so the column it pairs with is
+        # ``mean_diff``; ``median_diff`` is reported alongside for
+        # back-compat and as an outlier-robust magnitude.
         wilcoxon_rows.append({
             'gamma': g_val,
             'wilcoxon_vs_EASE_stat':          w_vs_ease[0],
             'wilcoxon_vs_EASE_p':             w_vs_ease[1],
             'wilcoxon_vs_EASE_n_pairs':       w_vs_ease[2],
             'wilcoxon_vs_EASE_sign':          w_vs_ease[3],
-            'wilcoxon_vs_EASE_median_diff':   w_vs_ease[4],
+            'wilcoxon_vs_EASE_mean_diff':     w_vs_ease[4],
+            'wilcoxon_vs_EASE_median_diff':   w_vs_ease[5],
             'wilcoxon_vs_EDLAE_stat':         w_vs_edlae[0],
             'wilcoxon_vs_EDLAE_p':            w_vs_edlae[1],
             'wilcoxon_vs_EDLAE_n_pairs':      w_vs_edlae[2],
             'wilcoxon_vs_EDLAE_sign':         w_vs_edlae[3],
-            'wilcoxon_vs_EDLAE_median_diff':  w_vs_edlae[4],
+            'wilcoxon_vs_EDLAE_mean_diff':    w_vs_edlae[4],
+            'wilcoxon_vs_EDLAE_median_diff':  w_vs_edlae[5],
         })
         sign_str_e  = (f"{w_vs_ease[3]:+d}"
                        if w_vs_ease[3]  != 0 else ' 0')
         sign_str_d  = (f"{w_vs_edlae[3]:+d}"
                        if w_vs_edlae[3] != 0 else ' 0')
-        print(f"  γ={g_val:<5g}  "
+        print(f"  gamma={g_val:<5g}  "
               f"vs EASE  p={w_vs_ease[1]:.2e}[{sign_str_e}] "
-              f"(median Δ={w_vs_ease[4]:+.4f})   "
+              f"(mean_diff={w_vs_ease[4]:+.4f})   "
               f"vs EDLAE p={w_vs_edlae[1]:.2e}[{sign_str_d}] "
-              f"(median Δ={w_vs_edlae[4]:+.4f})")
+              f"(mean_diff={w_vs_edlae[4]:+.4f})")
 
     w_df = pd.DataFrame(wilcoxon_rows)
-    w_path = out_dir / f'edlae_multiseed_{dataset}{suffix}_wilcoxon.csv'
+    w_path = out_dir / f'{stem}_wilcoxon.csv'
     w_df.to_csv(w_path, index=False)
     print(f"Saved Wilcoxon summary to {w_path}")
 
@@ -345,7 +393,7 @@ def run(dataset='ml-small', k=10,
         ax.set_title(f'EDLAE multi-seed — {dataset}{title_extra}')
         ax.grid(True, axis='y', ls=':', alpha=0.5)
         fig.tight_layout()
-        png_path = out_dir / f'edlae_multiseed_{dataset}{suffix}.png'
+        png_path = out_dir / f'{stem}.png'
         fig.savefig(png_path, dpi=140)
         plt.close(fig)
         print(f"Saved plot to {png_path}")

@@ -12,6 +12,8 @@ Reference: <https://wiki.srce.hr/spaces/NR/pages/121966084/>
 |----------------------------------|----------------------------------------------------|
 | `env_setup.sh`                   | One-time Python-env setup (run on the login node)  |
 | `_prologue.sh`                   | Shared setup sourced by every PBS job              |
+| `run_primary_multiseed.pbs`      | **PRIMARY**: full 6-family sweep, random 80/20 × 5 seeds (headline numbers) |
+| `run_main_baselines.pbs`         | Secondary: same 6-family sweep, single temporal split (sanity check) |
 | `run_edlae.pbs`                  | EDLAE + Laplacian-EDLAE sweep on ml-1m             |
 | `run_slim.pbs`                   | SLIM + Laplacian-SLIM sweep on ml-1m (long!)       |
 | `run_gamma_sensitivity.pbs`      | NDCG vs gamma, log-scale                           |
@@ -77,12 +79,25 @@ bash hpc/submit_all.sh
 ### Or individually
 
 ```bash
+# Primary (headline) numbers — MUST run this:
+qsub hpc/run_primary_multiseed.pbs
+
+# Secondary (temporal) sanity check, cheap:
+qsub hpc/run_main_baselines.pbs
+
+# Per-experiment deep-dives:
 qsub hpc/run_edlae.pbs
 qsub hpc/run_graph_ablation.pbs
 qsub hpc/run_gamma_sensitivity.pbs
 qsub hpc/run_head_tail.pbs
 qsub hpc/run_slim.pbs
 ```
+
+`run_primary_multiseed.pbs` is the single most important job: it
+produces the six-family leaderboard + pooled Wilcoxon tests across five
+random splits, which is what the thesis headline table is computed
+from. `run_main_baselines.pbs` is the temporal-split sanity check and
+is cheap enough to always run alongside it.
 
 ### With custom hyperparameters
 
@@ -136,15 +151,17 @@ rsync -avz supek.srce.hr:~/diplomski/logs/    ./logs/
 
 ## Resource profile
 
-| Job                       | CPUs | RAM  | Walltime | Why                                                          |
-|---------------------------|------|------|----------|--------------------------------------------------------------|
-| `run_edlae.pbs`           | 8    | 32GB | 2h       | Closed-form, cheap                                           |
-| `run_graph_ablation.pbs`  | 8    | 32GB | 6h       | Four graph sources x gamma grid                              |
-| `run_gamma_sensitivity.pbs` | 8  | 32GB | 6h       | Wide log-scale gamma grid (12 values)                        |
-| `run_head_tail.pbs`       | 8    | 32GB | 2h       | Single model, per-bucket NDCG                                |
-| `run_head_tail_gamma.pbs` | 8    | 32GB | 4h       | ~6 γ values × 1 Laplacian fit ≈ 6 × single head/tail         |
-| `run_edlae_multiseed.pbs` | 8    | 32GB | 4h       | 3 models × N_SEEDS closed-form fits (~1-2 min each on ml-1m) |
-| `run_slim.pbs`            | 16   | 64GB | 20h      | Coordinate descent per item (~3700 items on ml-1m)           |
+| Job                          | CPUs | RAM  | Walltime | Why                                                          |
+|------------------------------|------|------|----------|--------------------------------------------------------------|
+| `run_primary_multiseed.pbs`  | 8    | 32GB | 8h       | 6 families × ~30 configs × 5 seeds (~900 fits on ml-1m)      |
+| `run_main_baselines.pbs`     | 8    | 32GB | 2h       | Same grid, single temporal split (1 seed)                    |
+| `run_edlae.pbs`              | 8    | 32GB | 2h       | Closed-form, cheap                                           |
+| `run_graph_ablation.pbs`     | 8    | 32GB | 6h       | Four graph sources x gamma grid                              |
+| `run_gamma_sensitivity.pbs`  | 8    | 32GB | 6h       | Wide log-scale gamma grid (12 values)                        |
+| `run_head_tail.pbs`          | 8    | 32GB | 2h       | Single model, per-bucket NDCG                                |
+| `run_head_tail_gamma.pbs`    | 8    | 32GB | 4h       | ~6 γ values × 1 Laplacian fit ≈ 6 × single head/tail         |
+| `run_edlae_multiseed.pbs`    | 8    | 32GB | 4h       | 3 models × N_SEEDS closed-form fits (~1-2 min each on ml-1m) |
+| `run_slim.pbs`               | 16   | 64GB | 20h      | Coordinate descent per item (~3700 items on ml-1m)           |
 
 If SLIM keeps hitting walltime, shorten the gamma grid or drop
 `--n_iter` in `experiments/slim_experiments.py`.

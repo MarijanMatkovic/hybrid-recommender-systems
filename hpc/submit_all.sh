@@ -40,7 +40,12 @@ submit () {
 }
 
 echo ""
-echo ">>> Submitting cheap jobs first"
+echo ">>> Submitting PRIMARY headline job (random 80/20 x 5 seeds)"
+JID_PRIMARY=$(submit hpc/run_primary_multiseed.pbs "primary multi-seed baselines")
+JID_MAIN=$(submit    hpc/run_main_baselines.pbs    "temporal-split baselines (sanity)")
+
+echo ""
+echo ">>> Submitting cheap jobs next"
 JID_EDLAE=$(submit hpc/run_edlae.pbs            "EDLAE sweep")
 JID_HEAD=$(submit  hpc/run_head_tail.pbs        "head-vs-tail analysis")
 

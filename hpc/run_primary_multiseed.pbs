@@ -1,0 +1,41 @@
+#!/bin/bash
+# =====================================================================
+# PRIMARY evaluation protocol for the thesis: random 80/20 per user x 5
+# seeds on ml-1m, running the full six-family baseline sweep (EASE,
+# RP3beta, Hybrid-Score, Hybrid-Matrix, Hybrid-GraphReg, Laplacian-EASE).
+#
+# This is the job whose CSVs the headline tables, confidence intervals,
+# and Wilcoxon tests in the thesis are derived from. The secondary
+# (temporal-split) run in ``run_main_baselines.pbs`` is kept for
+# comparability with Steck's EASE paper but is NOT the reporting anchor.
+#
+# Rough budget on Supek (cray-python/3.11.7, 8 cpus):
+#     ~30 configs/family * 6 families * 5 seeds =~ 900 fits
+#     ml-1m EASE closed-form ~8-15s, Laplacian-EASE ~20-30s
+#  -> median ~15s/fit * 900 ~=~ 3.75 h worst case. Walltime is 8 h for
+#     safety (rebuild overhead, per-seed cold caches, stale modules).
+#
+# Overrides:
+#     qsub -v DATASET=ml-small hpc/run_primary_multiseed.pbs
+#     qsub -v K=20 hpc/run_primary_multiseed.pbs
+#     qsub -v OUT_ROOT=results_rerun hpc/run_primary_multiseed.pbs
+# =====================================================================
+#PBS -N lap_primary_multi
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=08:00:00
+#PBS -j oe
+#PBS -o logs/primary_multiseed.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+DATASET="${DATASET:-ml-1m}"
+K="${K:-10}"
+OUT_ROOT="${OUT_ROOT:-results}"
+
+python main.py \
+    --dataset "$DATASET" \
+    --k "$K" \
+    --protocol primary \
+    --out_root "$OUT_ROOT"

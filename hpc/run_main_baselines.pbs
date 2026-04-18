@@ -1,0 +1,34 @@
+#!/bin/bash
+# =====================================================================
+# SECONDARY (temporal-split) baseline sweep on ml-1m. Single
+# deterministic run, same six-family grid as the primary job. Kept so we
+# can report temporal-split numbers alongside the primary random-split
+# ones -- a method that wins on temporal but loses on primary is flagged
+# as *protocol-dependent* rather than a generic improvement.
+#
+# Much cheaper than the primary job (1 seed instead of 5), so walltime
+# is 2h. Budget ~30 configs/family * 6 families =~ 180 fits -> <1h.
+#
+# Overrides:
+#     qsub -v DATASET=ml-small hpc/run_main_baselines.pbs
+#     qsub -v OUT_ROOT=results_rerun hpc/run_main_baselines.pbs
+# =====================================================================
+#PBS -N lap_main_temporal
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+#PBS -o logs/main_baselines.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+DATASET="${DATASET:-ml-1m}"
+K="${K:-10}"
+OUT_ROOT="${OUT_ROOT:-results}"
+
+python main.py \
+    --dataset "$DATASET" \
+    --k "$K" \
+    --protocol temporal \
+    --out_root "$OUT_ROOT"

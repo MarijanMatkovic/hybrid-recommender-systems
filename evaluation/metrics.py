@@ -286,9 +286,9 @@ def evaluate_at_ks(model, train_df, test_df, ks=(10, 20)):
 def print_results(results, model_name="Model"):
     """Pretty-print evaluation results."""
     k = results['k']
-    print(f"\n{'─' * 50}")
+    print(f"\n{'-' * 50}")
     print(f"  {model_name} (k={k}, {results['n_users_evaluated']} users)")
-    print(f"{'─' * 50}")
+    print(f"{'-' * 50}")
     print(f"  Precision@{k}:  {results['Precision@k']:.4f}")
     print(f"  Recall@{k}:     {results['Recall@k']:.4f}")
     print(f"  NDCG@{k}:       {results['NDCG@k']:.4f}")
@@ -298,4 +298,4 @@ def print_results(results, model_name="Model"):
     print(f"  Coverage:       {results['Coverage']:.4f}")
     print(f"  Gini:           {results['Gini']:.4f}")
     print(f"  Novelty:        {results['Novelty']:.2f}")
-    print(f"{'─' * 50}")
+    print(f"{'-' * 50}")

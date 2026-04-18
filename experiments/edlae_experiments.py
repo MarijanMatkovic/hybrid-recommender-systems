@@ -31,11 +31,16 @@ from models import EDLAE, build_graph, build_laplacian
 from models.hybrid import HybridEASE_RP3beta
 
 from experiments._shared import (
+    bucket_rows,
+    bucketed_metrics_at_ks,
     ensure_results_dir,
+    item_popularity_buckets,
     load_dataset,
+    metric_cols_at_ks,
     wilcoxon_blank_columns,
     wilcoxon_columns,
     wilcoxon_vs_baseline,
+    write_buckets_csv,
 )
 
 
@@ -80,6 +85,10 @@ def run(dataset='ml-small', k=10,
     out_dir = ensure_results_dir('edlae' if out_dir is None else out_dir)
 
     train, test_positive, _ = load_dataset(dataset)
+    # Shared popularity-quintile bucketing so every model row has a
+    # matching per-bucket breakdown in the companion CSV.
+    bucket_of = item_popularity_buckets(train, n_buckets=5)
+    bucket_rows_all = []
 
     rows = []
 
@@ -102,13 +111,7 @@ def run(dataset='ml-small', k=10,
         'graph_source': None, 'normalise': None,
         'train_time_s': t_ease,
     }
-    for kk in ks:
-        for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
-            _row[f'{m}@{kk}'] = res_ease[f'{m}@{kk}']
-    _row['NDCG@k']    = res_ease[f'NDCG@{k}']
-    _row['MAP@k']     = res_ease[f'MAP@{k}']
-    _row['HitRate@k'] = res_ease[f'HitRate@{k}']
-    _row['Recall@k']  = res_ease[f'Recall@{k}']
+    _row.update(metric_cols_at_ks(res_ease, ks, primary_k=k))
     # EASE is the baseline in this script -- its own row carries
     # nan/0 Wilcoxon columns so the CSV schema is identical for every
     # row. The vs-EDLAE comparison is also blank here (EASE isn't
@@ -117,6 +120,15 @@ def run(dataset='ml-small', k=10,
     _row.update(wilcoxon_blank_columns('wilcoxon_vs_EASE'))
     _row.update(wilcoxon_blank_columns('wilcoxon_vs_EDLAE'))
     rows.append(_row)
+    # Companion per-bucket row (one set of per-bucket NDCG/Recall/HitRate
+    # rows emitted per model row -- see ``_shared.bucketed_metrics_at_ks``).
+    _ease_buckets = bucketed_metrics_at_ks(
+        ease_ref, train, test_positive, ks=ks, bucket_of=bucket_of)
+    bucket_rows_all.extend(
+        bucket_rows({'dataset': dataset, 'model': 'EASE',
+                     'dropout': 0.0, 'gamma': 0.0,
+                     'graph_source': None, 'normalise': None},
+                    _ease_buckets, ks, n_buckets=5))
 
     # ---- 2) Vanilla EDLAE sweep over dropout ----
     best_edlae_res = None
@@ -146,18 +158,20 @@ def run(dataset='ml-small', k=10,
             'normalise': None,
             'train_time_s': t,
         }
-        for kk in ks:
-            for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
-                _row[f'{m}@{kk}'] = res[f'{m}@{kk}']
-        _row['NDCG@k']    = res[f'NDCG@{k}']
-        _row['MAP@k']     = res[f'MAP@{k}']
-        _row['HitRate@k'] = res[f'HitRate@{k}']
-        _row['Recall@k']  = res[f'Recall@{k}']
+        _row.update(metric_cols_at_ks(res, ks, primary_k=k))
         _row.update(wilcoxon_columns('wilcoxon_vs_EASE', w_ease))
         # EDLAE baseline rows have no "vs EDLAE" comparison (the
         # comparison only applies to Laplacian-EDLAE rows).
         _row.update(wilcoxon_blank_columns('wilcoxon_vs_EDLAE'))
         rows.append(_row)
+        _edl_buckets = bucketed_metrics_at_ks(
+            _StandaloneWrapper(edlae), train, test_positive,
+            ks=ks, bucket_of=bucket_of)
+        bucket_rows_all.extend(
+            bucket_rows({'dataset': dataset, 'model': 'EDLAE',
+                         'dropout': p, 'gamma': 0.0,
+                         'graph_source': None, 'normalise': None},
+                        _edl_buckets, ks, n_buckets=5))
         if (best_edlae_res is None
                 or res[f'NDCG@{k}'] > best_edlae_res[f'NDCG@{k}']):
             best_edlae_res = res
@@ -214,22 +228,31 @@ def run(dataset='ml-small', k=10,
             'normalise': normalise,
             'train_time_s': t,
         }
-        for kk in ks:
-            for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
-                _row[f'{m}@{kk}'] = res[f'{m}@{kk}']
-        _row['NDCG@k']    = res[f'NDCG@{k}']
-        _row['MAP@k']     = res[f'MAP@{k}']
-        _row['HitRate@k'] = res[f'HitRate@{k}']
-        _row['Recall@k']  = res[f'Recall@{k}']
+        _row.update(metric_cols_at_ks(res, ks, primary_k=k))
         _row.update(wilcoxon_columns('wilcoxon_vs_EASE',  w_ease))
         _row.update(wilcoxon_columns('wilcoxon_vs_EDLAE', w_edlae))
         rows.append(_row)
+        _lap_buckets = bucketed_metrics_at_ks(
+            _StandaloneWrapper(edlae_lap), train, test_positive,
+            ks=ks, bucket_of=bucket_of)
+        bucket_rows_all.extend(
+            bucket_rows({'dataset': dataset,
+                         'model': 'EDLAE-Laplacian',
+                         'dropout': best_edlae_dropout,
+                         'gamma': gamma,
+                         'graph_source': graph_source,
+                         'normalise': normalise},
+                        _lap_buckets, ks, n_buckets=5))
 
     df = pd.DataFrame(rows)
     suffix = '_sym' if normalise == 'sym' else ''
-    csv_path = out_dir / f'edlae_{dataset}{suffix}.csv'
+    stem = f'edlae_{dataset}{suffix}'
+    csv_path = out_dir / f'{stem}.csv'
     df.to_csv(csv_path, index=False)
     print(f"\nSaved CSV to {csv_path}")
+    bpath = write_buckets_csv(out_dir, stem, bucket_rows_all)
+    if bpath is not None:
+        print(f"Saved per-bucket CSV to {bpath}")
 
     # ---- Plot ----
     fig, ax = plt.subplots(figsize=(7, 4.5))

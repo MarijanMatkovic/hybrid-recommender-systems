@@ -4,7 +4,7 @@ Hybrid recommender system combining **EASE** (linear autoencoder) and **RP3beta*
 
 Master's thesis project — University of Zagreb, 2026.
 
-## Key Results (MovieLens 1M)
+## Key Results (MovieLens 1M, temporal split)
 
 | Model | NDCG@10 | MAP@10 | HR@10 | vs EASE |
 |---|---|---|---|---|
@@ -15,7 +15,54 @@ Master's thesis project — University of Zagreb, 2026.
 | Matrix hybrid | 0.1238 | 0.0607 | 0.5305 | +6.4% |
 | GraphReg | 0.1136 | 0.0547 | 0.5057 | −2.3% |
 
-**Laplacian EASE** is the best single-model approach that incorporates graph structure into the EASE objective. Matrix hybrid achieves higher accuracy but requires maintaining two separate models.
+**Laplacian EASE** is the best single-model approach that incorporates graph structure into the EASE objective on the temporal split. Matrix hybrid achieves higher accuracy but requires maintaining two separate models.
+
+> **Protocol note.** The table above is from a single deterministic
+> temporal split (Steck's EASE setting) and is kept for comparability
+> with prior work. The thesis's headline numbers are reported under the
+> **primary protocol**: random 80/20 per user × 5 seeds, with
+> per-family Wilcoxon-vs-EASE pooled across seeds. Run the primary job
+> with `python main.py --dataset ml-1m --protocol primary` (or
+> `qsub hpc/run_primary_multiseed.pbs`). See
+> [Evaluation protocol](#evaluation-protocol) below.
+
+## Evaluation protocol
+
+We report results under two split protocols and treat them
+asymmetrically:
+
+| Protocol   | Split                                    | Seeds | Role                                                           |
+|------------|------------------------------------------|-------|----------------------------------------------------------------|
+| **primary** (default) | random 80/20 per user             | 5     | Headline numbers, CIs, Wilcoxon-vs-EASE, thesis tables         |
+| temporal   | each user's most recent 20% held out     | 1     | Sanity check, comparability with Steck's EASE paper            |
+
+`main.py` accepts `--protocol {primary,temporal}` (default: `primary`).
+Each run writes per-family CSVs + companion per-bucket CSVs
+(popularity quintiles q1..q5) to
+`results/baselines/<protocol>/`. Under `primary` it additionally
+writes:
+
+* `<family>_<dataset>_primary_<ts>_summary.csv` — mean/std/count over seeds
+* `<family>_<dataset>_primary_<ts>_buckets_summary.csv` — same for buckets
+* `leaderboard_<dataset>_primary_<ts>.csv` — best config per family
+* `wilcoxon_<dataset>_primary_<ts>.csv` — pooled (across seeds)
+  paired Wilcoxon signed-rank of each family's best mean-NDCG config
+  vs EASE's best mean-NDCG config, using every user seen in any seed
+  (user IDs are prefixed by seed to keep the test genuinely paired).
+
+Every CSV carries the full seven-metric standard at each cut-off:
+`NDCG`, `MAP`, `HitRate`, `Recall`, `Coverage`, `Gini`, `Novelty` —
+persisting the diversity columns next to the accuracy ones means the
+thesis can report (e.g.) a Laplacian NDCG win offset by a Coverage
+regression without having to re-fit.
+
+The reason for anchoring on the random-split primary: the temporal
+protocol turns out to be distributionally easier for popularity-biased
+models (Laplacian-EASE gains on the temporal split partially evaporate
+on random splits — see `experiments/edlae_multiseed.py`). Reporting
+both is the honest thing to do; anchoring the headline on the one with
+built-in CIs and multi-seed significance tests is the statistically
+defensible thing to do.
 
 ## Models
 
@@ -108,10 +155,16 @@ results = evaluate(model, train, test_positive, k=10)
 ### Full sweep
 
 ```bash
-python main.py
+# Primary protocol (random 80/20 × 5 seeds, thesis headline):
+python main.py --dataset ml-1m --protocol primary
+
+# Secondary protocol (temporal split, single deterministic run):
+python main.py --dataset ml-1m --protocol temporal
 ```
 
-Runs all models across hyperparameter grid. Results saved to CSV.
+Each invocation writes per-family CSVs + companion per-bucket CSVs to
+`results/baselines/<protocol>/`, plus a leaderboard and (under
+`primary`) a pooled-across-seeds Wilcoxon table.
 
 ## Evaluation Metrics
 

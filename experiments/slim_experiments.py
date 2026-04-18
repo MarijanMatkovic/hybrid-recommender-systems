@@ -34,11 +34,16 @@ from models import SLIM, build_graph, build_laplacian
 from models.hybrid import HybridEASE_RP3beta
 
 from experiments._shared import (
+    bucket_rows,
+    bucketed_metrics_at_ks,
     ensure_results_dir,
+    item_popularity_buckets,
     load_dataset,
+    metric_cols_at_ks,
     wilcoxon_blank_columns,
     wilcoxon_columns,
     wilcoxon_vs_baseline,
+    write_buckets_csv,
 )
 
 
@@ -71,6 +76,8 @@ def run(dataset='ml-small', k=10,
     out_dir = ensure_results_dir('slim' if out_dir is None else out_dir)
 
     train, test_positive, _ = load_dataset(dataset)
+    bucket_of = item_popularity_buckets(train, n_buckets=5)
+    bucket_rows_all = []
 
     rows = []
 
@@ -91,17 +98,19 @@ def run(dataset='ml-small', k=10,
         'gamma': 0.0, 'graph_source': None, 'normalise': None,
         'train_time_s': t_slim,
     }
-    for kk in ks:
-        for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
-            _row[f'{m}@{kk}'] = res_slim[f'{m}@{kk}']
-    _row['NDCG@k']    = res_slim[f'NDCG@{k}']
-    _row['MAP@k']     = res_slim[f'MAP@{k}']
-    _row['HitRate@k'] = res_slim[f'HitRate@{k}']
-    _row['Recall@k']  = res_slim[f'Recall@{k}']
+    _row.update(metric_cols_at_ks(res_slim, ks, primary_k=k))
     # SLIM is the main baseline in this script.
     _row.update(wilcoxon_blank_columns('wilcoxon_vs_SLIM'))
     _row.update(wilcoxon_blank_columns('wilcoxon_vs_EASE'))
     rows.append(_row)
+    _slim_buckets = bucketed_metrics_at_ks(
+        _StandaloneWrapper(slim), train, test_positive,
+        ks=ks, bucket_of=bucket_of)
+    bucket_rows_all.extend(
+        bucket_rows({'dataset': dataset, 'model': 'SLIM',
+                     'gamma': 0.0, 'graph_source': None,
+                     'normalise': None},
+                    _slim_buckets, ks, n_buckets=5))
 
     # ---- 2) EASE reference (same data) ----
     print("\n[reference] EASE")
@@ -121,18 +130,19 @@ def run(dataset='ml-small', k=10,
         'gamma': 0.0, 'graph_source': None, 'normalise': None,
         'train_time_s': t_ease,
     }
-    for kk in ks:
-        for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
-            _row[f'{m}@{kk}'] = res_ease[f'{m}@{kk}']
-    _row['NDCG@k']    = res_ease[f'NDCG@{k}']
-    _row['MAP@k']     = res_ease[f'MAP@{k}']
-    _row['HitRate@k'] = res_ease[f'HitRate@{k}']
-    _row['Recall@k']  = res_ease[f'Recall@{k}']
+    _row.update(metric_cols_at_ks(res_ease, ks, primary_k=k))
     # EASE vs SLIM: paired test over common users.
     w_ease_vs_slim = wilcoxon_vs_baseline(res_slim, res_ease, k=k)
     _row.update(wilcoxon_columns('wilcoxon_vs_SLIM', w_ease_vs_slim))
     _row.update(wilcoxon_blank_columns('wilcoxon_vs_EASE'))
     rows.append(_row)
+    _ease_buckets = bucketed_metrics_at_ks(
+        ease_ref, train, test_positive, ks=ks, bucket_of=bucket_of)
+    bucket_rows_all.extend(
+        bucket_rows({'dataset': dataset, 'model': 'EASE',
+                     'gamma': 0.0, 'graph_source': None,
+                     'normalise': None},
+                    _ease_buckets, ks, n_buckets=5))
 
     # ---- 3) Build Laplacian once ----
     X = ease_ref.ease.X
@@ -173,22 +183,30 @@ def run(dataset='ml-small', k=10,
             'gamma': gamma, 'graph_source': graph_source,
             'normalise': normalise, 'train_time_s': t,
         }
-        for kk in ks:
-            for m in ('NDCG', 'MAP', 'HitRate', 'Recall'):
-                _row[f'{m}@{kk}'] = res[f'{m}@{kk}']
-        _row['NDCG@k']    = res[f'NDCG@{k}']
-        _row['MAP@k']     = res[f'MAP@{k}']
-        _row['HitRate@k'] = res[f'HitRate@{k}']
-        _row['Recall@k']  = res[f'Recall@{k}']
+        _row.update(metric_cols_at_ks(res, ks, primary_k=k))
         _row.update(wilcoxon_columns('wilcoxon_vs_SLIM', w_slim))
         _row.update(wilcoxon_columns('wilcoxon_vs_EASE', w_ease))
         rows.append(_row)
+        _lap_buckets = bucketed_metrics_at_ks(
+            _StandaloneWrapper(slim_lap), train, test_positive,
+            ks=ks, bucket_of=bucket_of)
+        bucket_rows_all.extend(
+            bucket_rows({'dataset': dataset,
+                         'model': 'SLIM-Laplacian',
+                         'gamma': gamma,
+                         'graph_source': graph_source,
+                         'normalise': normalise},
+                        _lap_buckets, ks, n_buckets=5))
 
     df = pd.DataFrame(rows)
     suffix = '_sym' if normalise == 'sym' else ''
-    csv_path = out_dir / f'slim_{dataset}{suffix}.csv'
+    stem = f'slim_{dataset}{suffix}'
+    csv_path = out_dir / f'{stem}.csv'
     df.to_csv(csv_path, index=False)
     print(f"\nSaved CSV to {csv_path}")
+    bpath = write_buckets_csv(out_dir, stem, bucket_rows_all)
+    if bpath is not None:
+        print(f"Saved per-bucket CSV to {bpath}")
 
     # ---- Plot ----
     fig, ax = plt.subplots(figsize=(7, 4.5))
