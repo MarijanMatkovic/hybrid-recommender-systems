@@ -151,17 +151,17 @@ rsync -avz supek.srce.hr:~/diplomski/logs/    ./logs/
 
 ## Resource profile
 
-| Job                          | CPUs | RAM  | Walltime | Why                                                          |
-|------------------------------|------|------|----------|--------------------------------------------------------------|
-| `run_primary_multiseed.pbs`  | 8    | 32GB | 20h      | 6 families × ~30 configs × 5 seeds (~900 fits on ml-1m); bumped from 8h after previous runs hit the limit |
+| Job                          | CPUs | RAM  | Walltime | Why                                                                                    |
+|------------------------------|------|------|----------|----------------------------------------------------------------------------------------|
+| `run_primary_multiseed.pbs`  | 8    | 32GB | 40h      | 6 families × ~30 configs × 5 seeds (~900 fits on ml-1m)                                |
 | `run_main_baselines.pbs`     | 8    | 32GB | 6h       | Same grid, single temporal split (1 seed); bumped from 2h after it was walltime-killed |
-| `run_edlae.pbs`              | 8    | 32GB | 2h       | Closed-form, cheap                                           |
-| `run_graph_ablation.pbs`     | 8    | 32GB | 6h       | Four graph sources x gamma grid                              |
-| `run_gamma_sensitivity.pbs`  | 8    | 32GB | 6h       | Wide log-scale gamma grid (12 values)                        |
-| `run_head_tail.pbs`          | 8    | 32GB | 2h       | Single model, per-bucket NDCG                                |
-| `run_head_tail_gamma.pbs`    | 8    | 32GB | 4h       | ~6 γ values × 1 Laplacian fit ≈ 6 × single head/tail         |
-| `run_edlae_multiseed.pbs`    | 8    | 32GB | 4h       | 3 models × N_SEEDS closed-form fits (~1-2 min each on ml-1m) |
-| `run_slim.pbs`               | 16   | 64GB | 20h      | Coordinate descent per item (~3700 items on ml-1m)           |
+| `run_edlae.pbs`              | 8    | 32GB | 2h       | Closed-form, cheap                                                                     |
+| `run_graph_ablation.pbs`     | 8    | 32GB | 6h       | Four graph sources x gamma grid                                                        |
+| `run_gamma_sensitivity.pbs`  | 8    | 32GB | 6h       | Wide log-scale gamma grid (12 values)                                                  |
+| `run_head_tail.pbs`          | 8    | 32GB | 2h       | Single model, per-bucket NDCG                                                          |
+| `run_head_tail_gamma.pbs`    | 8    | 32GB | 4h       | ~6 γ values × 1 Laplacian fit ≈ 6 × single head/tail                                   |
+| `run_edlae_multiseed.pbs`    | 8    | 32GB | 4h       | 3 models × N_SEEDS closed-form fits (~1-2 min each on ml-1m)                           |
+| `run_slim.pbs`               | 16   | 64GB | 20h      | Coordinate descent per item (~3700 items on ml-1m)                                     |
 
 If SLIM keeps hitting walltime, shorten the gamma grid or drop
 `--n_iter` in `experiments/slim_experiments.py`.
