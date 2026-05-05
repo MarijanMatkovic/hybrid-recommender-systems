@@ -1,0 +1,56 @@
+#!/bin/bash
+# =====================================================================
+# Experiment 1.2 — User-activity head/tail gradient on the PRIMARY
+# (random 80/20) protocol at the correct operating point (gamma=3).
+#
+# The existing head/tail sweep (run_head_tail_gamma.pbs) used the
+# TEMPORAL split at gamma=50, which is the over-smoothed regime on the
+# primary protocol (NDCG 0.339 vs EASE 0.366). This job re-runs the
+# user-activity bucket breakdown at the primary-optimum gamma values
+# (1, 3, 10) using a single primary seed (seed=0).
+#
+# Key question: does the cold-user gain still exist at gamma=3 on the
+# primary protocol, or was it an artifact of running at gamma=50?
+#
+# Settings:
+#   SPLIT_MODE = random   (primary protocol)
+#   SPLIT_SEED = 0        (single seed -- qualitative check, not CI)
+#   BUCKET_BY  = user_activity
+#   GAMMAS     = 1,3,10   (the primary-relevant range)
+#   NORMALISE  = sym
+#   EASE_LAMBDA = 500
+#
+# Override on submit:
+#     qsub -v SPLIT_SEED=1 hpc/run_head_tail_primary.pbs
+#
+# Runtime: ~15-30 min (one EASE + three Lap-EASE fits, single seed).
+# Walltime set to 2h for safety margin.
+# =====================================================================
+#PBS -N lap_head_tail_primary
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+#PBS -o logs/head_tail_primary.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+EASE_LAMBDA="${EASE_LAMBDA:-500}"
+RP3_BETA="${RP3_BETA:-0.3}"
+NORMALISE="${NORMALISE:-sym}"
+GAMMAS="${GAMMAS:-1,3,10}"
+N_BUCKETS="${N_BUCKETS:-5}"
+SPLIT_SEED="${SPLIT_SEED:-0}"
+
+python -m experiments.head_tail_analysis \
+    --dataset ml-1m \
+    --k 10 \
+    --lambda_ "$EASE_LAMBDA" \
+    --rp3_beta "$RP3_BETA" \
+    --normalise "$NORMALISE" \
+    --n_buckets "$N_BUCKETS" \
+    --bucket_by user_activity \
+    --gammas "$GAMMAS" \
+    --split_mode random \
+    --split_seed "$SPLIT_SEED"
