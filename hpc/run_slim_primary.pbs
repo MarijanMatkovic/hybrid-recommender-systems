@@ -47,6 +47,10 @@ export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=8
 export MKL_NUM_THREADS=8
 
+# Stream Python stdout live so the log shows progress (per-column
+# SLIM CD prints don't otherwise reach the file until exit).
+export PYTHONUNBUFFERED=1
+
 SPLIT_SEED="${SPLIT_SEED:-0}"
 ALPHAS="${ALPHAS:-1e-4,1e-3}"
 L1_RATIOS="${L1_RATIOS:-0.5,0.9}"
@@ -55,7 +59,7 @@ MAX_ITER="${MAX_ITER:-5000}"
 N_ITER="${N_ITER:-150}"
 NORMALISE="${NORMALISE:-sym}"
 
-python -m experiments.slim_experiments \
+python -u -m experiments.slim_experiments \
     --dataset ml-1m \
     --k 10 \
     --alphas "$ALPHAS" \

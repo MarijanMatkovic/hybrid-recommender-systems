@@ -26,12 +26,19 @@
 #PBS -N lap_edlae_null_primary
 #PBS -q cpu
 #PBS -l select=1:ncpus=8:mem=32gb
-#PBS -l walltime=02:00:00
+#PBS -l walltime=04:00:00
 #PBS -j oe
 #PBS -o logs/edlae_null_primary.log
 
 cd "${PBS_O_WORKDIR:-$PWD}"
 source hpc/_prologue.sh
+
+# Force unbuffered Python stdout so we see progress live rather than
+# only at exit. The previous attempt at 2h walltime got killed without
+# producing ANY visible Python output -- almost certainly because
+# stdout was buffered when redirected to the PBS log file. Without
+# -u we cannot tell whether the script is making progress or hung.
+export PYTHONUNBUFFERED=1
 
 GAMMAS="${GAMMAS:-0.01,0.1,0.3,1,3,10}"
 RP3_BETA="${RP3_BETA:-0.3}"
@@ -39,7 +46,7 @@ LAMBDA_="${LAMBDA_:-500}"
 DROPOUT="${DROPOUT:-0.75}"
 NORMALISE="${NORMALISE:-sym}"
 
-python -m experiments.edlae_multiseed \
+python -u -m experiments.edlae_multiseed \
     --dataset ml-1m \
     --k 10 \
     --n_seeds 5 \

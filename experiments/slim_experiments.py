@@ -364,6 +364,10 @@ def main():
     p.add_argument('--split_seed', type=int, default=0,
                    help='Random-split seed. Only used when '
                         '--split_mode=random. Default: 0.')
+    p.add_argument('--out_dir', default=None,
+                   help='Override results directory. Default: '
+                        '"results/slim". Use this to keep primary-split '
+                        'and temporal-split runs in separate folders.')
     args = p.parse_args()
 
     gammas = None
@@ -388,7 +392,8 @@ def main():
         gammas=gammas, graph_source=args.graph_source,
         rp3_beta=args.rp3_beta, topK=args.topK,
         n_iter=args.n_iter, normalise=args.normalise, ks=ks,
-        split_mode=args.split_mode, split_seed=args.split_seed)
+        split_mode=args.split_mode, split_seed=args.split_seed,
+        out_dir=args.out_dir)
 
 
 if __name__ == '__main__':
