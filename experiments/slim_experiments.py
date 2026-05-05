@@ -85,6 +85,7 @@ def run(dataset='ml-small', k=10,
         max_iter=5000, tol=1e-4,
         n_iter=200,
         normalise='none', ks=(10, 20),
+        split_mode='temporal', split_seed=0,
         out_dir=None):
     """Run vanilla SLIM (optionally on a (alpha, l1_ratio) grid) and a
     Laplacian-SLIM gamma sweep on top of the best SLIM configuration.
@@ -129,7 +130,8 @@ def run(dataset='ml-small', k=10,
 
     out_dir = ensure_results_dir('slim' if out_dir is None else out_dir)
 
-    train, test_positive, _ = load_dataset(dataset)
+    train, test_positive, _ = load_dataset(
+        dataset, split_mode=split_mode, split_seed=split_seed)
     bucket_of = item_popularity_buckets(train, n_buckets=5)
     bucket_rows_all = []
 
@@ -354,6 +356,14 @@ def main():
                    help='Comma-separated list of cut-offs for multi-k '
                         'evaluation (NDCG@10, NDCG@20, ...). '
                         'Default: "10,20".')
+    p.add_argument('--split_mode', default='temporal',
+                   choices=['temporal', 'random'],
+                   help='Evaluation protocol. "temporal" (default) uses '
+                        'the deterministic temporal split. "random" uses '
+                        'a random 80/20 per-user split (primary protocol).')
+    p.add_argument('--split_seed', type=int, default=0,
+                   help='Random-split seed. Only used when '
+                        '--split_mode=random. Default: 0.')
     args = p.parse_args()
 
     gammas = None
@@ -377,7 +387,8 @@ def main():
         max_iter=args.max_iter, tol=args.tol,
         gammas=gammas, graph_source=args.graph_source,
         rp3_beta=args.rp3_beta, topK=args.topK,
-        n_iter=args.n_iter, normalise=args.normalise, ks=ks)
+        n_iter=args.n_iter, normalise=args.normalise, ks=ks,
+        split_mode=args.split_mode, split_seed=args.split_seed)
 
 
 if __name__ == '__main__':

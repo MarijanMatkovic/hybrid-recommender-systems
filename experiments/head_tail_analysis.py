@@ -262,12 +262,22 @@ def run(dataset='ml-small', k=10,
         graph_source='rp3beta', normalise='none',
         n_buckets=3, bucket_by='item_popularity',
         gammas=None,
+        split_mode='temporal', split_seed=0,
         out_dir=None):
     """Run head/tail analysis.
 
     If ``gammas`` is None (default) the script runs a single-gamma
     analysis (as before). If ``gammas`` is provided, it runs the
     per-bucket gain-vs-gamma sweep and additionally emits a line plot.
+
+    Parameters
+    ----------
+    split_mode : {'temporal', 'random'}
+        'temporal' (default) matches the existing experiment convention.
+        'random' uses a random 80/20 per-user split (primary protocol);
+        use ``split_seed`` to control reproducibility.
+    split_seed : int
+        Seed for the random split. Only used when ``split_mode='random'``.
     """
     if ease_lambda is None:
         ease_lambda = 500 if dataset == 'ml-1m' else 200
@@ -277,7 +287,8 @@ def run(dataset='ml-small', k=10,
     out_dir = ensure_results_dir('head_tail_analysis'
                                  if out_dir is None else out_dir)
 
-    train, test_positive, _ = load_dataset(dataset)
+    train, test_positive, _ = load_dataset(
+        dataset, split_mode=split_mode, split_seed=split_seed)
     labels = _quantile_labels(n_buckets)
 
     if bucket_by == 'item_popularity':
@@ -553,6 +564,15 @@ def main():
                         'to multiple buckets. user_activity: users '
                         'bucketed by train interaction count, each '
                         'user contributes to exactly one bucket.')
+    p.add_argument('--split_mode', default='temporal',
+                   choices=['temporal', 'random'],
+                   help='Evaluation protocol. "temporal" (default) uses '
+                        'the deterministic temporal split. "random" uses '
+                        'a random 80/20 per-user split (primary protocol); '
+                        'combine with --split_seed for reproducibility.')
+    p.add_argument('--split_seed', type=int, default=0,
+                   help='Random-split seed. Only used when '
+                        '--split_mode=random. Default: 0.')
     args = p.parse_args()
 
     gammas = None
@@ -564,6 +584,7 @@ def main():
         rp3_beta=args.rp3_beta, graph_source=args.graph_source,
         normalise=args.normalise,
         n_buckets=args.n_buckets, bucket_by=args.bucket_by,
+        split_mode=args.split_mode, split_seed=args.split_seed,
         gammas=gammas)
 
 
