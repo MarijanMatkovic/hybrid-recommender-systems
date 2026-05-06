@@ -35,7 +35,7 @@ import numpy as np
 import pandas as pd
 
 from evaluation.metrics import evaluate_at_ks
-from models import build_graph, build_laplacian
+from models import build_graph, build_laplacian, build_spectral_filter
 from models.hybrid import HybridEASE_RP3beta
 
 from experiments._shared import (
@@ -104,6 +104,7 @@ def run(dataset='ml-small', k=10,
         w_sources=None,
         rp3_beta=0.6, topK=200,
         normalise='sym',
+        filter_type='laplacian', filter_t=1.0,
         ks=(10, 20),
         split_seeds=None, n_seeds=5,
         out_dir=None):
@@ -175,7 +176,13 @@ def run(dataset='ml-small', k=10,
             W_sparse = build_graph(X, source=w_source, topK=topK,
                                    rp3_beta=rp3_beta, implicit=True)
             W_dense  = W_sparse.toarray().astype(np.float64)
-            L_raw, _ = build_laplacian(W_sparse, normalise=normalise)
+            if filter_type == 'laplacian':
+                L_raw, _ = build_laplacian(W_sparse, normalise=normalise)
+            else:
+                L_raw, _ = build_spectral_filter(W_sparse,
+                                                  filter_type=filter_type,
+                                                  t=filter_t,
+                                                  normalise=normalise)
             L_scaled  = _scale_laplacian(L_raw, G_diag_mean)
             LW = L_scaled @ W_dense   # precompute; used for all GS-EASE at this source
 
@@ -235,7 +242,8 @@ def run(dataset='ml-small', k=10,
     # ---- Persist ----
     df_out = pd.DataFrame(per_seed_rows)
     suffix = '_sym' if normalise == 'sym' else ''
-    stem = f'gs_ease_multiseed_{dataset}{suffix}'
+    filter_tag = '' if filter_type == 'laplacian' else f'_{filter_type}'
+    stem = f'gs_ease_multiseed_{dataset}{suffix}{filter_tag}'
 
     csv_path = out_dir / f'{stem}.csv'
     df_out.to_csv(csv_path, index=False)
@@ -331,6 +339,15 @@ def main():
     p.add_argument('--rp3_beta', type=float, default=0.6)
     p.add_argument('--topK', type=int, default=200)
     p.add_argument('--normalise', default='sym', choices=['none', 'sym'])
+    p.add_argument('--filter_type', default='laplacian',
+                   choices=['laplacian', 'L2', 'heat', 'regularized'],
+                   help='Spectral regularization matrix. '
+                        '"laplacian" (default) uses the standard L. '
+                        '"L2" uses L^2 (sharper high-freq penalty). '
+                        '"heat" uses I-exp(-tL). '
+                        '"regularized" uses I-(I+tL)^{-1}.')
+    p.add_argument('--filter_t', type=float, default=1.0,
+                   help='Diffusion scale t for heat/regularized filters.')
     p.add_argument('--ks', type=str, default='10,20')
     p.add_argument('--n_seeds', type=int, default=5)
     p.add_argument('--split_seeds', type=str, default=None)
@@ -346,8 +363,9 @@ def main():
     run(dataset=args.dataset, k=args.k, lambda_=args.lambda_,
         gammas=gammas, w_sources=w_sources,
         rp3_beta=args.rp3_beta, topK=args.topK,
-        normalise=args.normalise, ks=ks,
-        split_seeds=split_seeds, n_seeds=args.n_seeds,
+        normalise=args.normalise,
+        filter_type=args.filter_type, filter_t=args.filter_t,
+        ks=ks, split_seeds=split_seeds, n_seeds=args.n_seeds,
         out_dir=args.out_dir)
 
 

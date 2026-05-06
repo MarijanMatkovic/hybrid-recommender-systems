@@ -176,3 +176,88 @@ def build_laplacian(W, normalise='none'):
             L[:, isolated] = 0.0
 
     return L, degrees
+
+
+# Spectral filter types supported by build_spectral_filter.
+VALID_FILTER_TYPES = ('laplacian', 'L2', 'heat', 'regularized')
+
+
+def build_spectral_filter(W, filter_type='laplacian', t=1.0,
+                          normalise='sym'):
+    """
+    Build a spectral regularization matrix K from a similarity matrix W.
+
+    All variants share the same eigenvectors as the graph Laplacian L;
+    they differ only in how the eigenvalues are transformed:
+
+    - ``'laplacian'`` : K = L               (identity transform, λ → λ)
+      Standard Laplacian penalty; same as ``build_laplacian``.
+
+    - ``'L2'``        : K = L @ L            (λ → λ²)
+      Squared Laplacian; penalises high-frequency components more
+      aggressively.  Items whose signal lies in high-frequency eigenmodes
+      are pushed harder toward their graph neighbours.
+
+    - ``'heat'``      : K = I - exp(-t·L)   (λ → 1 - exp(-tλ))
+      Derived from the heat diffusion kernel.  For small tλ, behaves
+      like tL; for large tλ, saturates to 1.  Connects to the BSPM /
+      GF-CF lineage.  ``t`` controls the diffusion time (larger t =
+      stronger smoothing cutoff).
+
+    - ``'regularized'``: K = I - (I + t·L)^{-1}  (λ → tλ/(1 + tλ))
+      Regularised Laplacian.  Low-pass: the penalty on frequency λ
+      saturates to 1 as λ → ∞, giving equal treatment to very
+      high-frequency components.  ``t`` controls the crossover.
+
+    All returned matrices K are symmetric PSD and share L's null space
+    (the all-ones vector), so tr(B^T K B) = 0 iff B is graph-smooth.
+
+    Parameters
+    ----------
+    W : csr_matrix or np.ndarray, shape (n_items, n_items)
+    filter_type : str
+        One of ``VALID_FILTER_TYPES``.
+    t : float
+        Diffusion/regularization scale parameter.  Ignored for
+        ``'laplacian'`` and ``'L2'``.
+    normalise : str
+        Laplacian normalisation passed to ``build_laplacian``.
+        Use ``'sym'`` (default) so eigenvalues lie in [0, 2].
+
+    Returns
+    -------
+    K : np.ndarray, shape (n_items, n_items)
+        Spectral regularization matrix (dense, symmetric PSD).
+    degrees : np.ndarray, shape (n_items,)
+        Raw degree vector from ``build_laplacian`` (for downstream
+        scaling checks).
+    """
+    if filter_type not in VALID_FILTER_TYPES:
+        raise ValueError(
+            f"Unknown filter_type={filter_type!r}; "
+            f"valid: {VALID_FILTER_TYPES}")
+
+    L, degrees = build_laplacian(W, normalise=normalise)
+
+    if filter_type == 'laplacian':
+        return L, degrees
+
+    # Eigendecomposition (symmetric → use eigh for speed + stability).
+    # L is real symmetric, so all eigenvalues are real and >= 0.
+    vals, vecs = np.linalg.eigh(L)   # vals in ascending order
+    # Clip tiny negatives from floating-point noise.
+    vals = np.maximum(vals, 0.0)
+
+    if filter_type == 'L2':
+        fvals = vals ** 2
+    elif filter_type == 'heat':
+        # K = I - exp(-tL)  so that f(0)=0 (graph-constant functions get 0)
+        fvals = 1.0 - np.exp(-t * vals)
+    elif filter_type == 'regularized':
+        # K = I - (I + tL)^{-1}  so f(λ) = tλ/(1+tλ)
+        fvals = (t * vals) / (1.0 + t * vals)
+
+    K = (vecs * fvals[np.newaxis, :]) @ vecs.T
+    # Symmetrize to cancel floating-point asymmetry from eigenvec products.
+    K = (K + K.T) * 0.5
+    return K, degrees

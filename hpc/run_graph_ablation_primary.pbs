@@ -1,0 +1,50 @@
+#!/bin/bash
+# =====================================================================
+# Tier 3.1 — Graph-source ablation on the PRIMARY (random 80/20 × 5 seeds)
+# protocol.
+#
+# The existing temporal-split ablation (run_graph_ablation.pbs) showed:
+#   - binary beats rp3beta by ~2.6% on temporal (single seed)
+#   - itemknn is the best source on temporal
+# Both findings are single-seed and on the wrong protocol.  This job
+# re-runs all four sources (rp3beta, p3alpha, itemknn, binary) at the
+# primary-protocol optimum gamma=3, plus the immediate neighbours
+# (1 and 10) to confirm the optimum is stable across sources.
+#
+# Since gs_ease_multiseed.py already runs Lap-EASE inline for all
+# w_sources, no new code is needed -- we just call it with the right
+# flags and restrict to Lap-EASE (no GS-EASE target needed here; W=0
+# is the default in Lap-EASE so that's exactly what the inline path
+# computes).
+#
+# Output: results/gs_ease_multiseed/gs_ease_multiseed_ml-1m_sym.*
+# (Lap-EASE rows carry w_source, gamma; filter for model=Lap-EASE.)
+#
+# Override on submit:
+#     qsub -v GAMMAS="1,3,10" hpc/run_graph_ablation_primary.pbs
+# =====================================================================
+#PBS -N graph_ablation_primary
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+#PBS -o logs/graph_ablation_primary.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+
+# gamma=3 is the primary-protocol Lap-EASE optimum; include 1 and 10
+# to confirm the peak is stable across all four graph sources.
+GAMMAS="${GAMMAS:-1,3,10}"
+NORMALISE="${NORMALISE:-sym}"
+
+python -u -m experiments.gs_ease_multiseed \
+    --dataset ml-1m \
+    --k 10 \
+    --gammas "$GAMMAS" \
+    --w_sources rp3beta,p3alpha,itemknn,binary \
+    --normalise "$NORMALISE" \
+    --split_seeds 0,1,2,3,4 \
+    --ks 10,20
