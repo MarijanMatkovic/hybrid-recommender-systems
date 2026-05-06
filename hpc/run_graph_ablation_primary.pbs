@@ -26,7 +26,7 @@
 #PBS -N graph_ablation_primary
 #PBS -q cpu
 #PBS -l select=1:ncpus=8:mem=32gb
-#PBS -l walltime=04:00:00
+#PBS -l walltime=08:00:00
 #PBS -j oe
 #PBS -o logs/graph_ablation_primary.log
 
