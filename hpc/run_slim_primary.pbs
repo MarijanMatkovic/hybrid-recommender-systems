@@ -70,5 +70,5 @@ python -u -m experiments.slim_experiments \
     --normalise "$NORMALISE" \
     --split_mode random \
     --split_seed "$SPLIT_SEED" \
-    --out_dir results/slim_primary \
+    --out_dir slim_primary \
     --ks 10,20
