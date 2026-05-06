@@ -285,7 +285,8 @@ def run(dataset='ml-small', k=10,
 
     df = pd.DataFrame(rows)
     suffix = '_sym' if normalise == 'sym' else ''
-    stem = f'slim_{dataset}{suffix}'
+    seed_tag = f'_seed{split_seed}' if split_mode == 'random' else ''
+    stem = f'slim_{dataset}{suffix}{seed_tag}'
     csv_path = out_dir / f'{stem}.csv'
     df.to_csv(csv_path, index=False)
     print(f"\nSaved CSV to {csv_path}")
