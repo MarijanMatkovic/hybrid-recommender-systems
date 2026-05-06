@@ -1,0 +1,4 @@
+gamma,wilcoxon_vs_EASE_stat,wilcoxon_vs_EASE_p,wilcoxon_vs_EASE_n_pairs,wilcoxon_vs_EASE_sign,wilcoxon_vs_EASE_median_diff,wilcoxon_vs_EDLAE_stat,wilcoxon_vs_EDLAE_p,wilcoxon_vs_EDLAE_n_pairs,wilcoxon_vs_EDLAE_sign,wilcoxon_vs_EDLAE_median_diff
+1.0,152024539.0,0.003470474599526691,30037,0,0.0,32115490.5,5.045651728023519e-105,30037,0,0.0
+3.0,146634002.5,9.886185273847804e-29,30037,0,0.0,64697471.0,5.351445867597435e-247,30037,0,0.0
+10.0,130754388.0,1.6101190948739528e-182,30037,0,0.0,76920078.0,0.0,30037,0,0.0
