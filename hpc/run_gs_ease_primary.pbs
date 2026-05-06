@@ -1,0 +1,52 @@
+#!/bin/bash
+# =====================================================================
+# GS-EASE (Graph-Shrunk EASE) — primary protocol multi-seed sweep
+#
+# Sweeps (gamma × W_source) on the primary random 80/20 × 5-seed
+# protocol. Runs EASE + Lap-EASE as inline baselines so Wilcoxon
+# comparisons vs Lap-EASE are available in a single output file.
+#
+# Grid:
+#   gammas    : 0.3, 1, 3, 10  (covers Lap-EASE primary optimum range)
+#   w_sources : rp3beta, binary, itemknn
+#   -> 4 gammas × 3 sources = 12 GS-EASE configs
+#   -> 4 gammas × 3 sources = 12 Lap-EASE configs  (inline baseline)
+#   -> 1 EASE  (inline baseline)
+#
+# Runtime estimate: ~25-35 min total (5 seeds × ~5 min per seed).
+# All fits are closed-form; the bottleneck is the EASE Gram inversion
+# (~130s per seed) and W builds (~10s each).
+# Walltime set to 4h as a generous safety margin.
+#
+# Override on submit:
+#     qsub -v GAMMAS="0.1,0.3,1,3,10,30" hpc/run_gs_ease_primary.pbs
+#     qsub -v W_SOURCES="rp3beta,binary" hpc/run_gs_ease_primary.pbs
+# =====================================================================
+#PBS -N gs_ease_primary
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+#PBS -o logs/gs_ease_primary.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+
+GAMMAS="${GAMMAS:-0.3,1,3,10}"
+W_SOURCES="${W_SOURCES:-rp3beta,binary,itemknn}"
+NORMALISE="${NORMALISE:-sym}"
+RP3_BETA="${RP3_BETA:-0.6}"
+LAMBDA_="${LAMBDA_:-500}"
+
+python -u -m experiments.gs_ease_multiseed \
+    --dataset ml-1m \
+    --k 10 \
+    --lambda_ "$LAMBDA_" \
+    --gammas "$GAMMAS" \
+    --w_sources "$W_SOURCES" \
+    --normalise "$NORMALISE" \
+    --rp3_beta "$RP3_BETA" \
+    --split_seeds 0,1,2,3,4 \
+    --ks 10,20

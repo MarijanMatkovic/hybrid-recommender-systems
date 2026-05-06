@@ -6,3 +6,4 @@ from .slim import SLIM
 from .edlae import EDLAE
 from .hybrid import HybridEASE_RP3beta
 from .graph_sources import build_graph, build_laplacian, VALID_SOURCES
+from .gs_ease import GraphShrunkEASE
