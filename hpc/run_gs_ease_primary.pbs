@@ -25,7 +25,7 @@
 #PBS -N gs_ease_primary
 #PBS -q cpu
 #PBS -l select=1:ncpus=8:mem=32gb
-#PBS -l walltime=08:00:00
+#PBS -l walltime=40:00:00
 #PBS -j oe
 #PBS -o logs/gs_ease_primary.log
 
