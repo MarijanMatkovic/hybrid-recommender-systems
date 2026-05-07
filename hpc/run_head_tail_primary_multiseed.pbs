@@ -1,0 +1,48 @@
+#!/bin/bash
+# =====================================================================
+# Head/tail user-activity analysis for Lap-EASE at gamma=3 across all
+# 5 primary-protocol seeds.
+#
+# Motivation
+# ----------
+# The existing head/tail results use the temporal split (single seed).
+# This job replicates across the 5 primary seeds (random 80/20) to:
+#   1) confirm whether the temporal q1 gain (+0.0207) holds on the
+#      primary protocol too, or was a protocol artefact
+#   2) produce a pooled ~30k-observation Wilcoxon per bucket for
+#      a thesis-quality statistical statement
+#
+# Runtime: 5 seeds x (EASE ~130s + Lap-EASE ~130s + eval overhead)
+# ~= 5 x 270s = ~23 minutes. Walltime set to 2h to be safe.
+#
+# Outputs to results/head_tail_analysis/:
+#   head_tail_primary_multiseed_ml-1m_sym.csv
+#   head_tail_primary_multiseed_ml-1m_sym_summary.csv
+#   head_tail_primary_multiseed_ml-1m_sym.png
+# =====================================================================
+#PBS -N ht_primary_multiseed
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=02:00:00
+#PBS -j oe
+#PBS -o logs/head_tail_primary_multiseed.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4
+export OPENBLAS_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+
+GAMMA="${GAMMA:-3.0}"
+SEEDS="${SEEDS:-0,1,2,3,4}"
+NORMALISE="${NORMALISE:-sym}"
+
+python -u -m experiments.head_tail_primary_multiseed \
+    --dataset ml-1m \
+    --k 10 \
+    --gamma "$GAMMA" \
+    --normalise "$NORMALISE" \
+    --seeds "$SEEDS" \
+    --n_buckets 5

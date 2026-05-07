@@ -1,0 +1,52 @@
+#!/bin/bash
+# =====================================================================
+# Pooled ~30k-user Wilcoxon: SLIM-Lap(gamma=1) vs EASE, 5 primary seeds.
+#
+# Motivation
+# ----------
+# Per-seed within-seed Wilcoxon in results/slim_primary/ shows
+# individually significant results only on seeds 2 (p=7.7e-4) and
+# 4 (p=3.9e-2). Pooling 5 x ~6008 = ~30k observations produces a
+# single thesis-quality statement comparable to the Lap-EASE pooled
+# Wilcoxon already in results/baselines/primary/.
+#
+# The script reads the best (alpha, l1_ratio) per seed from the
+# existing slim_primary per-seed CSVs (so no grid re-sweep).
+# Per seed it fits: EASE (~130s) + SLIM (~500s) + SLIM-Lap (~500s).
+#
+# Runtime: 5 seeds x ~1130s = ~95 min.  Walltime: 4h (generous buffer).
+#
+# Outputs to results/slim_primary/:
+#   slim_pooled_wilcoxon_ml-1m_sym.csv
+#     (per-seed rows + one 'pooled' summary row)
+# =====================================================================
+#PBS -N slim_pooled_wilcoxon
+#PBS -q cpu
+#PBS -l select=1:ncpus=16:mem=64gb
+#PBS -l walltime=04:00:00
+#PBS -j oe
+#PBS -o logs/slim_pooled_wilcoxon.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+# SLIM column-by-column CD: keep single-threaded; use threads for BLAS
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+export PYTHONUNBUFFERED=1
+
+GAMMA="${GAMMA:-1.0}"
+SEEDS="${SEEDS:-0,1,2,3,4}"
+NORMALISE="${NORMALISE:-sym}"
+MAX_ITER="${MAX_ITER:-5000}"
+N_ITER="${N_ITER:-150}"
+
+python -u -m experiments.slim_pooled_wilcoxon \
+    --dataset ml-1m \
+    --k 10 \
+    --gamma "$GAMMA" \
+    --normalise "$NORMALISE" \
+    --seeds "$SEEDS" \
+    --max_iter "$MAX_ITER" \
+    --n_iter "$N_ITER"
