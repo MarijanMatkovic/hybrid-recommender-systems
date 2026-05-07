@@ -8,21 +8,35 @@ Reference: <https://wiki.srce.hr/spaces/NR/pages/121966084/>
 
 ## Files
 
-| File                             | Purpose                                            |
-|----------------------------------|----------------------------------------------------|
-| `env_setup.sh`                   | One-time Python-env setup (run on the login node)  |
-| `_prologue.sh`                   | Shared setup sourced by every PBS job              |
-| `run_primary_multiseed.pbs`      | **PRIMARY**: full 6-family sweep, random 80/20 × 5 seeds (headline numbers) |
-| `run_main_baselines.pbs`         | Secondary: same 6-family sweep, single temporal split (sanity check) |
-| `run_edlae.pbs`                  | EDLAE + Laplacian-EDLAE sweep on ml-1m             |
-| `run_slim.pbs`                   | SLIM + Laplacian-SLIM sweep on ml-1m (long!)       |
-| `run_gamma_sensitivity.pbs`      | NDCG vs gamma, log-scale                           |
-| `run_graph_ablation.pbs`         | RP3beta vs ItemKNN vs P3alpha vs binary adjacency  |
-| `run_head_tail.pbs`              | Head / torso / tail NDCG breakdown (single γ)      |
-| `run_head_tail_gamma.pbs`        | Head/tail NDCG gain across a γ grid (sweep plot)   |
-| `run_edlae_multiseed.pbs`        | Multi-seed EDLAE/Laplacian-EDLAE for mean ± std    |
-| `submit_all.sh`                  | `qsub`s every job in one go                        |
-| `submit_symmetric.sh`            | Tonight's sym-Laplacian sweep + new diagnostics    |
+| File                                   | Purpose                                                                      |
+|----------------------------------------|------------------------------------------------------------------------------|
+| `env_setup.sh`                         | One-time Python-env setup (run on the login node)                            |
+| `_prologue.sh`                         | Shared setup sourced by every PBS job                                        |
+| **Baselines**                          |                                                                              |
+| `run_primary_multiseed.pbs`            | **PRIMARY**: full 6-family sweep, random 80/20 × 5 seeds (headline numbers) |
+| `run_main_baselines.pbs`               | Secondary: same 6-family sweep, single temporal split (sanity check)        |
+| **Temporal deep-dives**                |                                                                              |
+| `run_edlae.pbs`                        | EDLAE + Laplacian-EDLAE sweep on ml-1m (temporal split)                     |
+| `run_slim.pbs`                         | SLIM + Laplacian-SLIM sweep on ml-1m, temporal split (long!)                |
+| `run_gamma_sensitivity.pbs`            | NDCG vs γ, log-scale (temporal)                                              |
+| `run_graph_ablation.pbs`               | RP3beta vs ItemKNN vs P3alpha vs binary adjacency (temporal)                 |
+| `run_head_tail.pbs`                    | Head / torso / tail NDCG breakdown, single γ (temporal)                     |
+| `run_head_tail_gamma.pbs`              | Head/tail NDCG gain across a γ grid (temporal sweep plot)                   |
+| `run_b_matrix_analysis.pbs`            | B-matrix structural metrics vs γ: ‖B‖₁, ‖B‖₂, sparsity, W-alignment        |
+| **Primary-protocol experiments**       |                                                                              |
+| `run_edlae_multiseed.pbs`              | Multi-seed EDLAE/Laplacian-EDLAE for mean ± std (ml-small)                  |
+| `run_edlae_multiseed_ml1m.pbs`         | Same as above but for ml-1m (slower)                                         |
+| `run_edlae_null_primary.pbs`           | EDLAE null hypothesis: dropout vs explicit Laplacian (primary, 5 seeds)     |
+| `run_slim_primary.pbs`                 | SLIM + Laplacian-SLIM, primary protocol (submit once per seed with SPLIT_SEED=N) |
+| `run_gs_ease_primary.pbs`              | GS-EASE (Graph-Shrunk EASE) vs Lap-EASE, primary × 5 seeds                  |
+| `run_graph_ablation_primary.pbs`       | Graph source ablation (rp3β/p3α/itemknn/binary) on primary × 5 seeds        |
+| `run_spectral_filter_primary.pbs`      | Spectral filter L² vs standard Laplacian L, primary × 5 seeds               |
+| `run_head_tail_primary.pbs`            | Head/tail user-activity breakdown, single primary seed                       |
+| `run_head_tail_primary_multiseed.pbs`  | Head/tail user-activity for Lap-EASE(γ=3) across all 5 primary seeds        |
+| `run_slim_pooled_wilcoxon.pbs`         | Pooled ~30k Wilcoxon: SLIM-Lap(γ=1) vs EASE, 5 primary seeds (long!)       |
+| **Utilities**                          |                                                                              |
+| `submit_all.sh`                        | `qsub`s every job in one go                                                  |
+| `submit_symmetric.sh`                  | Sym-Laplacian sweep + diagnostics                                            |
 
 ## 1. Log in
 
@@ -151,17 +165,27 @@ rsync -avz supek.srce.hr:~/diplomski/logs/    ./logs/
 
 ## Resource profile
 
-| Job                          | CPUs | RAM  | Walltime | Why                                                                                    |
-|------------------------------|------|------|----------|----------------------------------------------------------------------------------------|
-| `run_primary_multiseed.pbs`  | 8    | 32GB | 40h      | 6 families × ~30 configs × 5 seeds (~900 fits on ml-1m)                                |
-| `run_main_baselines.pbs`     | 8    | 32GB | 6h       | Same grid, single temporal split (1 seed); bumped from 2h after it was walltime-killed |
-| `run_edlae.pbs`              | 8    | 32GB | 2h       | Closed-form, cheap                                                                     |
-| `run_graph_ablation.pbs`     | 8    | 32GB | 6h       | Four graph sources x gamma grid                                                        |
-| `run_gamma_sensitivity.pbs`  | 8    | 32GB | 6h       | Wide log-scale gamma grid (12 values)                                                  |
-| `run_head_tail.pbs`          | 8    | 32GB | 2h       | Single model, per-bucket NDCG                                                          |
-| `run_head_tail_gamma.pbs`    | 8    | 32GB | 4h       | ~6 γ values × 1 Laplacian fit ≈ 6 × single head/tail                                   |
-| `run_edlae_multiseed.pbs`    | 8    | 32GB | 4h       | 3 models × N_SEEDS closed-form fits (~1-2 min each on ml-1m)                           |
-| `run_slim.pbs`               | 16   | 64GB | 20h      | Coordinate descent per item (~3700 items on ml-1m)                                     |
+| Job                                   | CPUs | RAM  | Walltime | Why                                                                                    |
+|---------------------------------------|------|------|----------|----------------------------------------------------------------------------------------|
+| `run_primary_multiseed.pbs`           | 8    | 32GB | 40h      | 6 families × ~30 configs × 5 seeds (~900 fits on ml-1m)                               |
+| `run_main_baselines.pbs`              | 8    | 32GB | 6h       | Same grid, single temporal split (1 seed); bumped from 2h after walltime-kill          |
+| `run_edlae.pbs`                       | 8    | 32GB | 2h       | Closed-form, cheap                                                                     |
+| `run_graph_ablation.pbs`              | 8    | 32GB | 6h       | Four graph sources × gamma grid (temporal)                                             |
+| `run_gamma_sensitivity.pbs`           | 8    | 32GB | 6h       | Wide log-scale gamma grid, 12 values (temporal)                                        |
+| `run_head_tail.pbs`                   | 8    | 32GB | 2h       | Single model, per-bucket NDCG (temporal)                                               |
+| `run_head_tail_gamma.pbs`             | 8    | 32GB | 4h       | ~6 γ values × 1 Laplacian fit ≈ 6 × single head/tail (temporal)                       |
+| `run_b_matrix_analysis.pbs`           | 8    | 32GB | 2h       | B-matrix structural metrics vs γ (temporal, single run)                                |
+| `run_edlae_multiseed.pbs`             | 8    | 32GB | 4h       | 3 models × N_SEEDS closed-form fits (ml-small)                                         |
+| `run_edlae_multiseed_ml1m.pbs`        | 8    | 32GB | 8h       | Same as above on ml-1m (heavier matrix inversion)                                      |
+| `run_edlae_null_primary.pbs`          | 8    | 32GB | 6h       | EDLAE null: 5 seeds × (EDLAE + Lap-EASE) closed-form fits                             |
+| `run_slim_primary.pbs`                | 16   | 64GB | 10h      | 1 primary seed: 4 SLIM configs + 5 SLIM-Lap gammas (~8h per seed)                     |
+| `run_gs_ease_primary.pbs`             | 8    | 32GB | 40h      | GS-EASE: 5 seeds × (gamma, W_source) grid + Lap-EASE reference                        |
+| `run_graph_ablation_primary.pbs`      | 8    | 32GB | 40h      | Graph source ablation: 5 seeds × 4 sources × gamma grid                               |
+| `run_spectral_filter_primary.pbs`     | 8    | 32GB | 40h      | L² vs L spectral filter: 5 seeds × gamma grid                                         |
+| `run_head_tail_primary.pbs`           | 8    | 32GB | 2h       | Head/tail user-activity, single primary seed                                           |
+| `run_head_tail_primary_multiseed.pbs` | 8    | 32GB | 2h       | Head/tail user-activity for Lap-EASE(γ=3), all 5 primary seeds (~23 min)              |
+| `run_slim_pooled_wilcoxon.pbs`        | 16   | 64GB | 4h       | Pooled Wilcoxon SLIM-Lap vs EASE: 5 seeds × (EASE + SLIM + SLIM-Lap) (~95 min)        |
+| `run_slim.pbs`                        | 16   | 64GB | 20h      | Coordinate descent per item (~3700 items on ml-1m, temporal)                          |
 
 If SLIM keeps hitting walltime, shorten the gamma grid or drop
 `--n_iter` in `experiments/slim_experiments.py`.

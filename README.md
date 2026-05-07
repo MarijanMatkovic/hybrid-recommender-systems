@@ -106,19 +106,50 @@ B = P·XᵀX  (with diagonal constraint applied)
 ## Project Structure
 
 ```
-├── main.py                  # Experiment runner and hyperparameter sweeps
+├── main.py                       # Baseline sweep runner (6-family leaderboard)
 ├── models/
-│   ├── __init__.py
-│   ├── ease.py              # EASE with closed-form solution
-│   ├── rp3beta.py           # RP3beta random walk similarity
-│   └── hybrid.py            # All 4 hybridization strategies
+│   ├── ease.py                   # EASE closed-form solution
+│   ├── rp3beta.py                # RP3beta random-walk similarity
+│   ├── p3alpha.py                # P3alpha (unnormalised random walk)
+│   ├── itemknn.py                # ItemKNN cosine similarity
+│   ├── edlae.py                  # EDLAE (dropout regularised EASE)
+│   ├── slim.py                   # SLIM + Laplacian-SLIM (ISTA solver)
+│   └── hybrid.py                 # All 4 hybridisation strategies + Lap-EASE
 ├── data/
-│   ├── loader.py            # MovieLens data loading and temporal split
-│   ├── ml-1m/               # MovieLens 1M dataset
-│   └── ml-lastest-small/    # MovieLens small dataset
-└── evaluation/
-    └── metrics.py           # NDCG, MAP, HR, MRR, Precision, Recall,
-                             # Coverage, Gini, Novelty
+│   ├── loader.py                 # Data loading + temporal/random splits
+│   ├── ml-1m/                    # MovieLens 1M dataset (6040 users, 3706 items)
+│   └── ml-latest-small/          # MovieLens Small dataset (610 users, 3650 items)
+├── evaluation/
+│   └── metrics.py                # NDCG, MAP, HR, MRR, Precision, Recall,
+│                                 # Coverage, Gini, Novelty; evaluate_at_ks
+├── experiments/
+│   ├── _shared.py                # Shared helpers: load_dataset, wilcoxon_paired,
+│   │                             # bucketed_metrics_at_ks, metric_cols_at_ks
+│   ├── gamma_sensitivity.py      # NDCG vs γ sweep (temporal)
+│   ├── graph_source_ablation.py  # Graph source ablation: rp3β/p3α/itemknn/binary
+│   ├── head_tail_analysis.py     # Head/tail NDCG breakdown + γ-sweep (temporal)
+│   ├── head_tail_primary_multiseed.py  # Head/tail user-activity, 5 primary seeds
+│   │                                   # + pooled ~30k Wilcoxon per bucket
+│   ├── slim_experiments.py       # SLIM ElasticNet grid + Laplacian-SLIM sweep
+│   ├── slim_pooled_wilcoxon.py   # Pooled ~30k Wilcoxon: SLIM-Lap vs EASE,
+│   │                             # 5 primary seeds (reads best config per seed)
+│   ├── edlae_experiments.py      # EDLAE dropout sweep (temporal)
+│   ├── edlae_multiseed.py        # EDLAE null hypothesis, 5 primary seeds
+│   ├── gs_ease_multiseed.py      # GS-EASE (Graph-Shrunk EASE) primary evaluation
+│   ├── b_matrix_analysis.py      # B-matrix structural metrics vs γ
+│   └── wallclock_summary.py      # Runtime table for Methods chapter
+├── hpc/                          # PBS Pro job scripts for Supek HPC
+│   └── README.md                 # HPC submission guide
+└── results/                      # Output CSVs and PNGs (gitignored)
+    ├── baselines/{primary,temporal}/   # 6-family leaderboard + Wilcoxon
+    ├── gs_ease_multiseed/              # GS-EASE + L² spectral filter results
+    ├── slim_primary/                   # Per-seed SLIM + pooled Wilcoxon
+    ├── edlae_multiseed/                # EDLAE null results
+    ├── head_tail_analysis/             # Head/tail breakdown (temporal + primary)
+    ├── gamma_sensitivity/              # γ-sweep curves
+    ├── graph_source_ablation/          # Graph source comparison
+    ├── b_matrix_analysis/              # B-matrix structural plots
+    └── wallclock_summary/              # Runtime table
 ```
 
 ## Setup
