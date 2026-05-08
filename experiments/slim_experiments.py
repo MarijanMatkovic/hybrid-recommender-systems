@@ -322,7 +322,7 @@ def run(dataset='ml-small', k=10,
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--dataset', default='ml-small',
-                   choices=['ml-small', 'ml-1m'])
+                   choices=['ml-small', 'ml-1m', 'netflix-prize'])
     p.add_argument('--k', type=int, default=10)
     # Single-point overrides: if EITHER is supplied we skip the grid
     # and run one SLIM fit at those exact values.

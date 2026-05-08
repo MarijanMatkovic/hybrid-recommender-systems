@@ -3,4 +3,5 @@ from .loader import (
     temporal_train_test_split,
     random_train_test_split,
     load_movielens_1m,
+    load_netflix_prize,
 )

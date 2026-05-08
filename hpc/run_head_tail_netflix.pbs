@@ -1,0 +1,34 @@
+#!/bin/bash
+# =====================================================================
+# Head/tail (item popularity quintiles) NDCG breakdown on Netflix Prize.
+# Single gamma + Wilcoxon per bucket -- temporal split.
+#
+# Override on submit:
+#   qsub -v GAMMA=30 hpc/run_head_tail_netflix.pbs
+# =====================================================================
+#PBS -N nfx_head_tail
+#PBS -q cpu
+#PBS -l select=1:ncpus=16:mem=64gb
+#PBS -l walltime=8:00:00
+#PBS -j oe
+#PBS -o logs/head_tail_netflix.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8
+export OPENBLAS_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+
+GAMMA="${GAMMA:-30}"
+NORMALISE="${NORMALISE:-sym}"
+BUCKET_BY="${BUCKET_BY:-item_popularity}"
+
+python -u -m experiments.head_tail_analysis \
+    --dataset netflix-prize \
+    --k 10 \
+    --gamma "$GAMMA" \
+    --normalise "$NORMALISE" \
+    --bucket_by "$BUCKET_BY" \
+    --n_buckets 5

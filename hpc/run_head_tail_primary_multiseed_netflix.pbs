@@ -1,0 +1,40 @@
+#!/bin/bash
+# =====================================================================
+# Head/tail user-activity for Lap-EASE(gamma=3) across 5 primary seeds
+# on Netflix Prize. Counterpart of run_head_tail_primary_multiseed.pbs.
+#
+# Pools per-user NDCG observations across seeds for a per-bucket pooled
+# Wilcoxon test (~5 x ~50k users on Netflix). Tests whether the
+# head-bias replicates at scale.
+#
+# Outputs to results/head_tail_analysis/:
+#   head_tail_primary_multiseed_netflix-prize_sym.csv
+#   head_tail_primary_multiseed_netflix-prize_sym_summary.csv
+#   head_tail_primary_multiseed_netflix-prize_sym.png
+# =====================================================================
+#PBS -N nfx_ht_primary_multiseed
+#PBS -q cpu
+#PBS -l select=1:ncpus=16:mem=64gb
+#PBS -l walltime=12:00:00
+#PBS -j oe
+#PBS -o logs/head_tail_primary_multiseed_netflix.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8
+export OPENBLAS_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+
+GAMMA="${GAMMA:-3.0}"
+SEEDS="${SEEDS:-0,1,2,3,4}"
+NORMALISE="${NORMALISE:-sym}"
+
+python -u -m experiments.head_tail_primary_multiseed \
+    --dataset netflix-prize \
+    --k 10 \
+    --gamma "$GAMMA" \
+    --normalise "$NORMALISE" \
+    --seeds "$SEEDS" \
+    --n_buckets 5

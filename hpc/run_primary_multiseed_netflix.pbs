@@ -1,0 +1,44 @@
+#!/bin/bash
+# =====================================================================
+# PRIMARY protocol on Netflix Prize: full 6-family sweep, random 80/20
+# x 5 seeds. The Netflix-Prize counterpart of run_primary_multiseed.pbs.
+#
+# Scale considerations
+# --------------------
+# Netflix has ~17.7k items vs ml-1m's ~3.4k => EASE inversion is ~125x
+# more expensive (O(n^3)). The default grid in main.py for netflix-prize
+# is deliberately leaner than ml-1m's (3 EASE lambdas + 2 hyb fusion
+# alphas + 4 GraphReg gammas + 4 Lap gammas), so the 5-seed sweep still
+# finishes in ~6-10h.
+#
+# First-time data load parses ~100M ratings (~2 min) and writes a parquet
+# cache next to the source files. Subsequent runs reload in <30s.
+#
+# Outputs to results/baselines/primary/:
+#   <family>_netflix-prize_primary_<ts>.csv
+#   <family>_netflix-prize_primary_<ts>_summary.csv
+#   leaderboard_netflix-prize_primary_<ts>.csv
+#   wilcoxon_netflix-prize_primary_<ts>.csv
+# =====================================================================
+#PBS -N nfx_primary_multiseed
+#PBS -q cpu
+#PBS -l select=1:ncpus=16:mem=64gb
+#PBS -l walltime=48:00:00
+#PBS -j oe
+#PBS -o logs/primary_multiseed_netflix.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8
+export OPENBLAS_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+
+SEEDS="${SEEDS:-0,1,2,3,4}"
+
+python -u main.py \
+    --dataset netflix-prize \
+    --protocol primary \
+    --k 10 \
+    --seeds "$SEEDS"

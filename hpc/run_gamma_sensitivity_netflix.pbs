@@ -1,0 +1,31 @@
+#!/bin/bash
+# =====================================================================
+# Gamma sensitivity sweep on Netflix Prize.
+# NDCG vs gamma (log-scale), Lap-EASE only -- temporal split.
+#
+# Outputs:
+#   results/gamma_sensitivity/gamma_sensitivity_netflix-prize.csv
+#   results/gamma_sensitivity/gamma_sensitivity_netflix-prize_sym.csv
+#   results/gamma_sensitivity/gamma_sensitivity_netflix-prize.png
+# =====================================================================
+#PBS -N nfx_gamma_sensitivity
+#PBS -q cpu
+#PBS -l select=1:ncpus=16:mem=64gb
+#PBS -l walltime=12:00:00
+#PBS -j oe
+#PBS -o logs/gamma_sensitivity_netflix.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8
+export OPENBLAS_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+
+NORMALISE="${NORMALISE:-sym}"
+
+python -u -m experiments.gamma_sensitivity \
+    --dataset netflix-prize \
+    --k 10 \
+    --normalise "$NORMALISE"

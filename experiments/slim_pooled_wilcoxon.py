@@ -306,7 +306,7 @@ def main():
     p = argparse.ArgumentParser(
         description='Pooled Wilcoxon: SLIM-Lap vs EASE across 5 primary seeds.')
     p.add_argument('--dataset', default='ml-1m',
-                   choices=['ml-small', 'ml-1m'])
+                   choices=['ml-small', 'ml-1m', 'netflix-prize'])
     p.add_argument('--k', type=int, default=10)
     p.add_argument('--gamma', type=float, default=1.0,
                    help='SLIM-Lap Laplacian strength (default: 1.0, '

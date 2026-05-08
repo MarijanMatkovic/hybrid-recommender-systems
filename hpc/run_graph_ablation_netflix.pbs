@@ -1,0 +1,26 @@
+#!/bin/bash
+# =====================================================================
+# Graph source ablation on Netflix Prize.
+# RP3beta vs ItemKNN vs P3alpha vs binary adjacency, temporal split.
+# =====================================================================
+#PBS -N nfx_graph_ablation
+#PBS -q cpu
+#PBS -l select=1:ncpus=16:mem=64gb
+#PBS -l walltime=12:00:00
+#PBS -j oe
+#PBS -o logs/graph_ablation_netflix.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8
+export OPENBLAS_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+
+NORMALISE="${NORMALISE:-sym}"
+
+python -u -m experiments.graph_source_ablation \
+    --dataset netflix-prize \
+    --k 10 \
+    --normalise "$NORMALISE"

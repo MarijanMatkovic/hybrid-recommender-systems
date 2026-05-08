@@ -118,7 +118,8 @@ B = P·XᵀX  (with diagonal constraint applied)
 ├── data/
 │   ├── loader.py                 # Data loading + temporal/random splits
 │   ├── ml-1m/                    # MovieLens 1M dataset (6040 users, 3706 items)
-│   └── ml-latest-small/          # MovieLens Small dataset (610 users, 3650 items)
+│   ├── ml-latest-small/          # MovieLens Small dataset (610 users, 3650 items)
+│   └── netflixprize/             # Netflix Prize (~480k users, ~17.7k items, ~100M ratings)
 ├── evaluation/
 │   └── metrics.py                # NDCG, MAP, HR, MRR, Precision, Recall,
 │                                 # Coverage, Gini, Novelty; evaluate_at_ks
@@ -211,9 +212,17 @@ In contrast, `‖B−W‖²` penalizes every element of B. Since W is ~97% zeros
 
 ## Datasets
 
-Evaluated on [MovieLens 1M](https://grouplens.org/datasets/movielens/1m/) (6,040 users, 3,706 items, ~1M ratings) and [MovieLens Small](https://www.kaggle.com/datasets/shubhammehta21/movie-lens-small-latest-dataset). Temporal split 80/20, ratings ≥ 4.0 as positive implicit feedback.
+Evaluated on:
 
-411 hyperparameter configurations tested across all models.
+- **[MovieLens 1M](https://grouplens.org/datasets/movielens/1m/)** (6,040 users, 3,706 items, ~1M ratings) — primary thesis dataset.
+- **[MovieLens Small](https://grouplens.org/datasets/movielens/latest/)** (610 users, ~3,650 items) — fast smoke runs.
+- **[Netflix Prize](https://www.kaggle.com/datasets/netflix-inc/netflix-prize-data)** (~480k users, ~17.7k items, ~100M ratings) — scale-up validation. First-time parse takes ~2 min and writes `data/netflixprize/ratings_cache.parquet` for fast subsequent loads. Default `min_interactions=20` (denser than MovieLens). Output filenames carry `netflix-prize` to distinguish from ML-1M results.
+
+All datasets use rating ≥ 4.0 (≥ 3.5 for ml-small) as positive implicit feedback. Both 80/20 temporal and 80/20 random per-user splits are supported.
+
+Pass `--dataset netflix-prize` to `main.py` or any experiment script. Memory: full Netflix EASE peak ~20 GB (allocate ≥ 32 GB).
+
+411 hyperparameter configurations tested across all models on ML-1M; the Netflix grid is leaner (~19 configs/seed) due to ~125x slower per-fit cost.
 
 ## References
 

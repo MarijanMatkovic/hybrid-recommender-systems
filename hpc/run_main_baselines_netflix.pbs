@@ -1,0 +1,31 @@
+#!/bin/bash
+# =====================================================================
+# Secondary (temporal) baseline sweep on Netflix Prize.
+# Single deterministic temporal split, all 6 families.
+#
+# This is the cheap sanity check that runs alongside the primary
+# multiseed job. ~1.5-2h on Netflix.
+#
+# Outputs to results/baselines/temporal/:
+#   <family>_netflix-prize_temporal_<ts>.csv
+#   leaderboard_netflix-prize_temporal_<ts>.csv
+# =====================================================================
+#PBS -N nfx_main_baselines
+#PBS -q cpu
+#PBS -l select=1:ncpus=16:mem=64gb
+#PBS -l walltime=12:00:00
+#PBS -j oe
+#PBS -o logs/main_baselines_netflix.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8
+export OPENBLAS_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+
+python -u main.py \
+    --dataset netflix-prize \
+    --protocol temporal \
+    --k 10

@@ -34,6 +34,15 @@ Reference: <https://wiki.srce.hr/spaces/NR/pages/121966084/>
 | `run_head_tail_primary.pbs`            | Head/tail user-activity breakdown, single primary seed                       |
 | `run_head_tail_primary_multiseed.pbs`  | Head/tail user-activity for Lap-EASE(γ=3) across all 5 primary seeds        |
 | `run_slim_pooled_wilcoxon.pbs`         | Pooled ~30k Wilcoxon: SLIM-Lap(γ=1) vs EASE, 5 primary seeds (long!)       |
+| **Netflix Prize jobs**                 | (counterparts of ml-1m jobs; output filenames carry `netflix-prize` tag)    |
+| `run_primary_multiseed_netflix.pbs`    | PRIMARY 6-family sweep on Netflix, random 80/20 x 5 seeds                   |
+| `run_main_baselines_netflix.pbs`       | Temporal sanity check on Netflix (single deterministic split)               |
+| `run_gamma_sensitivity_netflix.pbs`    | NDCG vs gamma on Netflix (temporal)                                         |
+| `run_graph_ablation_netflix.pbs`       | Graph source ablation on Netflix (temporal)                                 |
+| `run_head_tail_netflix.pbs`            | Head/tail item-popularity NDCG, single gamma (Netflix temporal)             |
+| `run_head_tail_primary_multiseed_netflix.pbs` | Head/tail user-activity for Lap-EASE(γ=3), 5 primary seeds (Netflix)  |
+| `run_edlae_multiseed_netflix.pbs`      | Multi-seed EDLAE / Lap-EDLAE on Netflix (5 primary seeds)                   |
+| `run_gs_ease_primary_netflix.pbs`      | GS-EASE primary 5-seed sweep on Netflix                                     |
 | **Utilities**                          |                                                                              |
 | `submit_all.sh`                        | `qsub`s every job in one go                                                  |
 | `submit_symmetric.sh`                  | Sym-Laplacian sweep + diagnostics                                            |
@@ -186,6 +195,14 @@ rsync -avz supek.srce.hr:~/diplomski/logs/    ./logs/
 | `run_head_tail_primary_multiseed.pbs` | 8    | 32GB | 2h       | Head/tail user-activity for Lap-EASE(γ=3), all 5 primary seeds (~23 min)              |
 | `run_slim_pooled_wilcoxon.pbs`        | 16   | 64GB | 4h       | Pooled Wilcoxon SLIM-Lap vs EASE: 5 seeds × (EASE + SLIM + SLIM-Lap) (~95 min)        |
 | `run_slim.pbs`                        | 16   | 64GB | 20h      | Coordinate descent per item (~3700 items on ml-1m, temporal)                          |
+| `run_primary_multiseed_netflix.pbs`   | 16   | 64GB | 48h      | Same grid leaner than ml-1m; 17.7k items => EASE inversion ~125x slower per fit       |
+| `run_main_baselines_netflix.pbs`      | 16   | 64GB | 12h      | Single temporal split, all 6 families on Netflix                                       |
+| `run_gamma_sensitivity_netflix.pbs`   | 16   | 64GB | 12h      | Wide log-scale gamma grid on Netflix (temporal)                                        |
+| `run_graph_ablation_netflix.pbs`      | 16   | 64GB | 12h      | Graph source ablation on Netflix (temporal)                                            |
+| `run_head_tail_netflix.pbs`           | 16   | 64GB | 8h       | Single-gamma head/tail breakdown on Netflix                                            |
+| `run_head_tail_primary_multiseed_netflix.pbs` | 16 | 64GB | 12h | Lap-EASE(γ=3), 5 primary seeds, head/tail user-activity                                |
+| `run_edlae_multiseed_netflix.pbs`     | 16   | 64GB | 12h      | EDLAE closed-form, 5 primary seeds; Lap-EDLAE comparison                                |
+| `run_gs_ease_primary_netflix.pbs`     | 16   | 64GB | 48h      | GS-EASE primary 5-seed (gamma, W_source) grid                                          |
 
 If SLIM keeps hitting walltime, shorten the gamma grid or drop
 `--n_iter` in `experiments/slim_experiments.py`.

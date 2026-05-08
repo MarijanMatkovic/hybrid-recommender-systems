@@ -180,7 +180,7 @@ def run(dataset='ml-small', k=10,
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--dataset', default='ml-small',
-                   choices=['ml-small', 'ml-1m'])
+                   choices=['ml-small', 'ml-1m', 'netflix-prize'])
     p.add_argument('--k', type=int, default=10)
     p.add_argument('--topK', type=int, default=200)
     p.add_argument('--ease_lambda', type=float, default=None)

@@ -1,0 +1,40 @@
+#!/bin/bash
+# =====================================================================
+# GS-EASE (Graph-Shrunk EASE) primary protocol on Netflix Prize.
+# 5 seeds x (gamma, W_source) grid + Lap-EASE reference.
+#
+# Counterpart of run_gs_ease_primary.pbs (ml-1m). Uses the Netflix-Prize
+# corpus -- ~17.7k items, ~125x slower per fit than ml-1m.
+#
+# Outputs to results/gs_ease_multiseed/:
+#   gs_ease_multiseed_netflix-prize_sym.csv
+#   gs_ease_multiseed_netflix-prize_sym_summary.csv
+#   gs_ease_multiseed_netflix-prize_sym_wilcoxon.csv
+# =====================================================================
+#PBS -N nfx_gs_ease_primary
+#PBS -q cpu
+#PBS -l select=1:ncpus=16:mem=64gb
+#PBS -l walltime=48:00:00
+#PBS -j oe
+#PBS -o logs/gs_ease_primary_netflix.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8
+export OPENBLAS_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+
+GAMMAS="${GAMMAS:-1,3,10}"
+W_SOURCES="${W_SOURCES:-rp3beta,p3alpha}"
+NORMALISE="${NORMALISE:-sym}"
+SPLIT_SEEDS="${SPLIT_SEEDS:-0,1,2,3,4}"
+
+python -u -m experiments.gs_ease_multiseed \
+    --dataset netflix-prize \
+    --k 10 \
+    --gammas "$GAMMAS" \
+    --w_sources "$W_SOURCES" \
+    --normalise "$NORMALISE" \
+    --split_seeds "$SPLIT_SEEDS"

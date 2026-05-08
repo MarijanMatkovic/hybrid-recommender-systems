@@ -1,0 +1,38 @@
+#!/bin/bash
+# =====================================================================
+# Multi-seed EDLAE / Lap-EDLAE on Netflix Prize.
+# 5 primary seeds, mean +/- std + pooled Wilcoxon vs EASE.
+# EDLAE is closed-form like EASE, so each fit is ~1-2 min on Netflix.
+#
+# Override on submit:
+#   qsub -v N_SEEDS=5,DROPOUT=0.5,GAMMA=10 hpc/run_edlae_multiseed_netflix.pbs
+# =====================================================================
+#PBS -N nfx_edlae_multiseed
+#PBS -q cpu
+#PBS -l select=1:ncpus=16:mem=64gb
+#PBS -l walltime=12:00:00
+#PBS -j oe
+#PBS -o logs/edlae_multiseed_netflix.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=8
+export OPENBLAS_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+
+N_SEEDS="${N_SEEDS:-5}"
+DROPOUT="${DROPOUT:-0.5}"
+GAMMA="${GAMMA:-10}"
+NORMALISE="${NORMALISE:-sym}"
+SPLIT_SEEDS="${SPLIT_SEEDS:-0,1,2,3,4}"
+
+python -u -m experiments.edlae_multiseed \
+    --dataset netflix-prize \
+    --k 10 \
+    --n_seeds "$N_SEEDS" \
+    --dropout "$DROPOUT" \
+    --gamma "$GAMMA" \
+    --normalise "$NORMALISE" \
+    --split_seeds "$SPLIT_SEEDS"

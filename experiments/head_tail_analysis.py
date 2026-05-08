@@ -541,7 +541,7 @@ def _run_gamma_sweep(base, base_summary, base_per_user,
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--dataset', default='ml-small',
-                   choices=['ml-small', 'ml-1m'])
+                   choices=['ml-small', 'ml-1m', 'netflix-prize'])
     p.add_argument('--k', type=int, default=10)
     p.add_argument('--gamma', type=float, default=None,
                    help='Single gamma for the single-gamma mode.')

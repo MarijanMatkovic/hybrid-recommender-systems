@@ -297,7 +297,7 @@ def main():
         description='Multi-seed head/tail analysis for Lap-EASE on the '
                     'primary (random 80/20 x 5-seed) protocol.')
     p.add_argument('--dataset', default='ml-1m',
-                   choices=['ml-small', 'ml-1m'])
+                   choices=['ml-small', 'ml-1m', 'netflix-prize'])
     p.add_argument('--k', type=int, default=10)
     p.add_argument('--gamma', type=float, default=3.0,
                    help='Laplacian gamma to evaluate (default: 3.0, '

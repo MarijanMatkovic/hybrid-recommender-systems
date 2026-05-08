@@ -44,6 +44,7 @@ except Exception:  # pragma: no cover
 from data import (
     load_movielens,
     load_movielens_1m,
+    load_netflix_prize,
     temporal_train_test_split,
     random_train_test_split,
 )
@@ -201,13 +202,22 @@ def wilcoxon_blank_columns(prefix: str):
                                      float('nan'), float('nan')))
 
 
+DATASET_CHOICES = ('ml-small', 'ml-1m', 'netflix-prize')
+
+
 def load_dataset(dataset: str, split_mode: str = 'temporal',
-                 split_seed: int = 0, test_ratio: float = 0.2):
+                 split_seed: int = 0, test_ratio: float = 0.2,
+                 subsample_users: int = None,
+                 min_interactions: int = None):
     """Load ratings + perform an 80/20 split.
 
     Parameters
     ----------
-    dataset : {'ml-small', 'ml-1m'}
+    dataset : {'ml-small', 'ml-1m', 'netflix-prize'}
+        Which corpus to load. ``netflix-prize`` reads
+        ``data/netflixprize/`` (4 combined_data files, ~100M ratings,
+        480k users, 17.7k items). On first load the parser caches a
+        parquet file next to the source for fast reload.
     split_mode : {'temporal', 'random'}
         'temporal' (default, deterministic) uses each user's most recent
         interactions for test, matching the protocol from Steck's EASE
@@ -218,6 +228,12 @@ def load_dataset(dataset: str, split_mode: str = 'temporal',
         Only used when ``split_mode='random'``.
     test_ratio : float
         Fraction of each user's interactions in the held-out set.
+    subsample_users : int or None
+        Netflix-prize only: optional cap on number of users (development
+        speedup). Default None = use all ~480k users.
+    min_interactions : int or None
+        Override the per-dataset default interaction threshold. Defaults
+        are: ml-small=5, ml-1m=5, netflix-prize=20.
 
     Returns
     -------
@@ -225,12 +241,25 @@ def load_dataset(dataset: str, split_mode: str = 'temporal',
         and the rating threshold used to filter the test set.
     """
     if dataset == 'ml-1m':
-        ratings, _ = load_movielens_1m('data/ml-1m', min_interactions=5)
+        mi = 5 if min_interactions is None else min_interactions
+        ratings, _ = load_movielens_1m('data/ml-1m', min_interactions=mi)
         threshold = 4.0
-    else:
+    elif dataset == 'netflix-prize':
+        mi = 20 if min_interactions is None else min_interactions
+        ratings, _ = load_netflix_prize(
+            'data/netflixprize',
+            min_interactions=mi,
+            subsample_users=subsample_users)
+        threshold = 4.0
+    elif dataset == 'ml-small':
+        mi = 5 if min_interactions is None else min_interactions
         ratings, _ = load_movielens('data/ml-latest-small',
-                                    min_interactions=5)
+                                    min_interactions=mi)
         threshold = 3.5
+    else:
+        raise ValueError(
+            f"Unknown dataset={dataset!r}; "
+            f"expected one of {DATASET_CHOICES}.")
 
     if split_mode == 'temporal':
         train, test = temporal_train_test_split(ratings,

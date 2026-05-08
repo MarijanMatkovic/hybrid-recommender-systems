@@ -142,7 +142,9 @@ def _default_grids(dataset):
     """Return the (lambda, beta, topK, etc.) grids per family.
 
     Smaller grids on ml-small so the ci smoke-run is cheap, wider on
-    ml-1m where the full sweep is the thesis contribution.
+    ml-1m where the full sweep is the thesis contribution. Netflix is
+    deliberately tighter than ml-1m: each EASE inversion is ~10x more
+    expensive (17.7k items vs 3.4k), and SLIM is impractical at scale.
     """
     if dataset == 'ml-1m':
         return {
@@ -165,6 +167,25 @@ def _default_grids(dataset):
             'lap_rp3_betas':     [0.3, 0.6],
             'lap_rp3_topKs':     [200],
             'lap_gammas':        [1, 3, 10, 30, 50, 75, 100],
+        }
+    if dataset == 'netflix-prize':
+        # Netflix-Prize: 17.7k items -> EASE inversion is ~125x slower
+        # than ml-1m. Keep grid lean (anchored on configs that win on
+        # ml-1m) so the full primary 5-seed sweep finishes in ~24h.
+        return {
+            'ease_lambdas':      [200, 500, 1000],
+            'rp3_betas':         [0.6],
+            'rp3_topKs':         [200, 500],
+            'hyb_lambdas':       [500],
+            'hyb_rp3_betas':     [0.6],
+            'hyb_rp3_topKs':     [200],
+            'hyb_fusion_alphas': [0.3, 0.5, 0.7],
+            'gr_lambdas':        [500],
+            'gr_gammas':         [0.05, 0.1, 0.3, 1.0],
+            'lap_lambdas':       [500],
+            'lap_rp3_betas':     [0.6],
+            'lap_rp3_topKs':     [200],
+            'lap_gammas':        [1, 3, 10, 30],
         }
     # ml-small -- small grids for quick smoke runs.
     return {
@@ -744,7 +765,7 @@ def main():
         description='Full-baseline sweep (EASE, RP3beta, Hybrid-*, '
                     'GraphReg, Laplacian-EASE)')
     parser.add_argument('--dataset', default='ml-1m',
-                        choices=['ml-small', 'ml-1m'])
+                        choices=['ml-small', 'ml-1m', 'netflix-prize'])
     parser.add_argument('--k', type=int, default=10)
     parser.add_argument('--protocol', default='primary',
                         choices=['primary', 'temporal'],
