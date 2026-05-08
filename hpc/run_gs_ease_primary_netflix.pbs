@@ -14,7 +14,7 @@
 #PBS -N nfx_gs_ease_primary
 #PBS -q cpu
 #PBS -l select=1:ncpus=16:mem=64gb
-#PBS -l walltime=48:00:00
+#PBS -l walltime=72:00:00
 #PBS -j oe
 #PBS -o logs/gs_ease_primary_netflix.log
 

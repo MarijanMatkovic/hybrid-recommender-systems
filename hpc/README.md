@@ -195,14 +195,14 @@ rsync -avz supek.srce.hr:~/diplomski/logs/    ./logs/
 | `run_head_tail_primary_multiseed.pbs` | 8    | 32GB | 2h       | Head/tail user-activity for Lap-EASE(γ=3), all 5 primary seeds (~23 min)              |
 | `run_slim_pooled_wilcoxon.pbs`        | 16   | 64GB | 4h       | Pooled Wilcoxon SLIM-Lap vs EASE: 5 seeds × (EASE + SLIM + SLIM-Lap) (~95 min)        |
 | `run_slim.pbs`                        | 16   | 64GB | 20h      | Coordinate descent per item (~3700 items on ml-1m, temporal)                          |
-| `run_primary_multiseed_netflix.pbs`   | 16   | 64GB | 48h      | Same grid leaner than ml-1m; 17.7k items => EASE inversion ~125x slower per fit       |
+| `run_primary_multiseed_netflix.pbs`   | 16   | 64GB | 72h      | Same grid leaner than ml-1m; 17.7k items => EASE inversion ~125x slower per fit       |
 | `run_main_baselines_netflix.pbs`      | 16   | 64GB | 12h      | Single temporal split, all 6 families on Netflix                                       |
 | `run_gamma_sensitivity_netflix.pbs`   | 16   | 64GB | 12h      | Wide log-scale gamma grid on Netflix (temporal)                                        |
 | `run_graph_ablation_netflix.pbs`      | 16   | 64GB | 12h      | Graph source ablation on Netflix (temporal)                                            |
 | `run_head_tail_netflix.pbs`           | 16   | 64GB | 8h       | Single-gamma head/tail breakdown on Netflix                                            |
 | `run_head_tail_primary_multiseed_netflix.pbs` | 16 | 64GB | 12h | Lap-EASE(γ=3), 5 primary seeds, head/tail user-activity                                |
 | `run_edlae_multiseed_netflix.pbs`     | 16   | 64GB | 12h      | EDLAE closed-form, 5 primary seeds; Lap-EDLAE comparison                                |
-| `run_gs_ease_primary_netflix.pbs`     | 16   | 64GB | 48h      | GS-EASE primary 5-seed (gamma, W_source) grid                                          |
+| `run_gs_ease_primary_netflix.pbs`     | 16   | 64GB | 72h      | GS-EASE primary 5-seed (gamma, W_source) grid                                          |
 
 If SLIM keeps hitting walltime, shorten the gamma grid or drop
 `--n_iter` in `experiments/slim_experiments.py`.
