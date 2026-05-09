@@ -229,12 +229,25 @@ def load_netflix_prize(path='data/netflixprize', min_interactions=20,
         Columns: movieId, year, title (loaded from movie_titles.csv).
     """
     path = Path(path)
-    cache_path = path / 'ratings_cache.parquet'
+    cache_pq  = path / 'ratings_cache.parquet'
+    cache_pkl = path / 'ratings_cache.pkl'
 
-    if use_cache and cache_path.exists():
-        print(f"[netflix] loading cached ratings from {cache_path}")
-        ratings = pd.read_parquet(cache_path)
-    else:
+    ratings = None
+    if use_cache:
+        if cache_pq.exists():
+            try:
+                print(f"[netflix] loading cached ratings from {cache_pq}")
+                ratings = pd.read_parquet(cache_pq)
+            except Exception as exc:
+                print(f"[netflix] parquet read failed ({exc}); will retry pickle/parse")
+        if ratings is None and cache_pkl.exists():
+            try:
+                print(f"[netflix] loading cached ratings from {cache_pkl}")
+                ratings = pd.read_pickle(cache_pkl)
+            except Exception as exc:
+                print(f"[netflix] pickle read failed ({exc}); will reparse")
+
+    if ratings is None:
         print("[netflix] parsing combined_data_*.txt (slow first time)")
         # Pre-allocate arrays — 100M rows in a list is slow because of
         # Python object overhead. Numpy arrays grow with realloc which
@@ -282,11 +295,20 @@ def load_netflix_prize(path='data/netflixprize', min_interactions=20,
         ratings = ratings[['user_id', 'item_id', 'rating', 'timestamp']]
 
         if use_cache:
+            cache_written = False
             try:
-                ratings.to_parquet(cache_path, index=False)
-                print(f"[netflix] cached parsed data to {cache_path}")
+                ratings.to_parquet(cache_pq, index=False)
+                print(f"[netflix] cached parsed data to {cache_pq}")
+                cache_written = True
             except Exception as exc:
-                print(f"[netflix] could not write cache: {exc}")
+                print(f"[netflix] parquet cache failed ({exc}); "
+                      f"falling back to pickle")
+            if not cache_written:
+                try:
+                    ratings.to_pickle(cache_pkl)
+                    print(f"[netflix] cached parsed data to {cache_pkl}")
+                except Exception as exc:
+                    print(f"[netflix] could not write any cache: {exc}")
 
     # Optional user subsampling for development runs
     if subsample_users is not None:

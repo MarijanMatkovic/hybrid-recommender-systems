@@ -6,6 +6,7 @@ from scipy.sparse import csr_matrix
 from models.ease import EASE
 from models.rp3beta import RP3beta
 from models.graph_sources import build_graph, build_laplacian
+from models.lazy_pred import make_pred, LazyPred, LAZY_PRED_THRESHOLD
 
 
 class HybridEASE_RP3beta:
@@ -115,6 +116,20 @@ class HybridEASE_RP3beta:
         if method == 'score':
             # Level 1: Score-level ensemble
             # pred = α * (X @ B) + (1-α) * (X @ W)
+            #
+            # The min-max normalisation needs the global min/max of each
+            # full pred matrix, which on Netflix is 61 GB and OOMs.
+            # Refuse to run score-fusion when the dense product would be
+            # too large -- main.py drops Hybrid-Score from the netflix
+            # grid for this reason.
+            n_users, n_items = X.shape[0], B.shape[1]
+            if n_users * n_items > LAZY_PRED_THRESHOLD:
+                raise NotImplementedError(
+                    "Hybrid-Score requires materialising two dense pred "
+                    "matrices for min-max normalisation; this would OOM "
+                    f"on the current dataset ({n_users}x{n_items} = "
+                    f"{n_users*n_items:.2e} cells). Use a smaller dataset "
+                    "or skip method='score'.")
             pred_ease = X.dot(B)
             pred_rp3 = X.dot(W).toarray()
 
@@ -141,16 +156,16 @@ class HybridEASE_RP3beta:
             np.fill_diagonal(S, 0)
 
             self.S = S  # Store for analysis/interpretability
-            self.pred = X.dot(S)
+            self.pred = make_pred(X, S)
 
         elif method == 'graph_reg':
             # Level 3: Already computed B via graph-regularized objective
             # RP3beta was still fitted for analysis purposes
-            self.pred = X.dot(B)
+            self.pred = make_pred(X, B)
 
         elif method == 'laplacian':
             # Level 4: Already computed B via Laplacian-regularized objective
-            self.pred = X.dot(B)
+            self.pred = make_pred(X, B)
 
         else:
             raise ValueError(f"Unknown method: {method}")
@@ -244,7 +259,7 @@ class HybridEASE_RP3beta:
         B[diagIndices] = 0
 
         self.ease.B = B
-        self.ease.pred = X.dot(B)
+        self.ease.pred = make_pred(X, B)
 
         return B, X
 
@@ -349,7 +364,7 @@ class HybridEASE_RP3beta:
         B[diagIndices] = 0
 
         self.ease.B = B
-        self.ease.pred = X.dot(B)
+        self.ease.pred = make_pred(X, B)
 
         return B, X
 
@@ -390,6 +405,9 @@ class HybridEASE_RP3beta:
         dd['cu'] = self.ease.user_enc.transform(dd['user_id'])
 
         pred_matrix = self.pred
+        # Note: do NOT call .toarray() on a LazyPred (it doesn't have one)
+        # or on a dense ndarray (it doesn't have one either). Only sparse
+        # matrices need toarray; LazyPred handles per-row indexing natively.
         if sps.issparse(pred_matrix):
             pred_matrix = pred_matrix.toarray()
 

@@ -172,6 +172,12 @@ def _default_grids(dataset):
         # Netflix-Prize: 17.7k items -> EASE inversion is ~125x slower
         # than ml-1m. Keep grid lean (anchored on configs that win on
         # ml-1m) so the full primary 5-seed sweep finishes in ~24h.
+        #
+        # Hybrid-Score is intentionally absent from this grid: its
+        # min-max-normalised score fusion requires materialising the
+        # full dense pred matrices for both EASE and RP3beta (~61 GB
+        # each on Netflix). The other families use LazyPred and stay
+        # within memory.
         return {
             'ease_lambdas':      [200, 500, 1000],
             'rp3_betas':         [0.6],
@@ -180,6 +186,7 @@ def _default_grids(dataset):
             'hyb_rp3_betas':     [0.6],
             'hyb_rp3_topKs':     [200],
             'hyb_fusion_alphas': [0.3, 0.5, 0.7],
+            'skip_hybrid_score': True,
             'gr_lambdas':        [500],
             'gr_gammas':         [0.05, 0.1, 0.3, 1.0],
             'lap_lambdas':       [500],
@@ -308,16 +315,25 @@ def _run_single_split(train, test_positive, dataset, k, ks, grids,
 
     # -----------------------------------------------------------------
     # 3) Hybrid-Score  (score-level α-blend).
+    #    Skipped when the dataset would require materialising the dense
+    #    pred matrices for min-max normalisation (Netflix; ~61 GB).
     # -----------------------------------------------------------------
     print("\n=== 3/6 Hybrid-Score ===")
     family_rows['Hybrid-Score'] = []
     family_buckets['Hybrid-Score'] = []
     family_per_user['Hybrid-Score'] = {}
+    skip_hyb_score = bool(grids.get('skip_hybrid_score'))
+    if skip_hyb_score:
+        print("  [skipped: grid requested skip_hybrid_score "
+              "(would OOM on this dataset)]")
+    score_grid = (
+        [] if skip_hyb_score
+        else list(itertools.product(
+            grids['hyb_lambdas'], grids['hyb_rp3_betas'],
+            grids['hyb_rp3_topKs'], grids['hyb_fusion_alphas']))
+    )
     i = 0
-    for lam, rp3_b, rp3_tk, fa in itertools.product(
-        grids['hyb_lambdas'], grids['hyb_rp3_betas'],
-        grids['hyb_rp3_topKs'], grids['hyb_fusion_alphas'],
-    ):
+    for lam, rp3_b, rp3_tk, fa in score_grid:
         i += 1
         res, h, dt = _fit_eval_hybrid(
             train, test_positive, 'score', lam, rp3_b, rp3_tk, fa,

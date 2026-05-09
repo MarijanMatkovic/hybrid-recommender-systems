@@ -41,6 +41,8 @@ import scipy.sparse as sps
 from scipy.sparse import csr_matrix
 from sklearn.preprocessing import LabelEncoder
 
+from .lazy_pred import make_pred
+
 
 class GraphShrunkEASE:
     """
@@ -116,5 +118,5 @@ class GraphShrunkEASE:
         B[diag_idx] = 0.0              # clean up floating-point residue
 
         self.B = B
-        self.pred = X.dot(B)
+        self.pred = make_pred(X, B)
         return B, X

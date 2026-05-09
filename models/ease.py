@@ -3,6 +3,8 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from sklearn.preprocessing import LabelEncoder
 
+from .lazy_pred import make_pred
+
 
 class EASE:
     """
@@ -50,7 +52,7 @@ class EASE:
         B[diagIndices] = 0
 
         self.B = B
-        self.pred = X.dot(B)
+        self.pred = make_pred(X, B)
         return B, X
 
     def predict_for_user(self, user_idx, watched_set, score_vector, candidate_items, k):

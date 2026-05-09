@@ -36,6 +36,8 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from sklearn.preprocessing import LabelEncoder
 
+from .lazy_pred import make_pred
+
 
 class EDLAE:
     """
@@ -102,7 +104,7 @@ class EDLAE:
         B[np.diag_indices(n_items)] = 0.0
 
         self.B = B
-        self.pred = X.dot(B)
+        self.pred = make_pred(X, B)
         return B, X
 
     def fit_laplacian(self, df, L_scaled, lambda_=500.0, dropout=0.5,
@@ -147,7 +149,7 @@ class EDLAE:
         B[np.diag_indices(n_items)] = 0.0
 
         self.B = B
-        self.pred = X.dot(B)
+        self.pred = make_pred(X, B)
         return B, X
 
     def predict_for_user(self, user_idx, watched_set, score_vector,

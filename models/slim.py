@@ -30,6 +30,8 @@ from scipy.sparse import csr_matrix
 from sklearn.linear_model import ElasticNet
 from sklearn.preprocessing import LabelEncoder
 
+from .lazy_pred import make_pred
+
 
 class SLIM:
     """
@@ -133,7 +135,7 @@ class SLIM:
         np.fill_diagonal(B, 0.0)
 
         self.B = B
-        self.pred = X.dot(B)
+        self.pred = make_pred(X, B)
         return B, X
 
     def fit_laplacian(self, df, L_scaled, beta=1e-3, l1_reg=1e-3,
@@ -221,7 +223,7 @@ class SLIM:
         np.fill_diagonal(B, 0.0)
 
         self.B = B
-        self.pred = X.dot(B)
+        self.pred = make_pred(X, B)
         return B, X
 
     def predict_for_user(self, user_idx, watched_set, score_vector,
