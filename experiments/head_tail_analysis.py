@@ -242,7 +242,6 @@ def _fit_ease(train, ease_lambda, rp3_beta, rp3_topK):
     base.fit(train, method='score', fusion_alpha=1.0,
              ease_lambda=ease_lambda, rp3_alpha=1.0,
              rp3_beta=rp3_beta, rp3_topK=rp3_topK)
-    base.pred = base.ease.X.dot(base.ease.B)
     return base
 
 

@@ -48,6 +48,7 @@ import pandas as pd
 
 from evaluation.metrics import evaluate_at_ks
 from models import EASE, RP3beta, HybridEASE_RP3beta
+from models.lazy_pred import make_pred
 
 from experiments._shared import (
     PRIMARY_SPLIT_SEEDS,
@@ -95,7 +96,10 @@ def _fit_eval_rp3(train, test_positive, base_ease, base_X,
     rp3 = RP3beta()
     W = rp3.fit(base_X, alpha=alpha, beta=beta, topK=topK,
                 implicit=implicit)
-    pred_rp3 = base_X.dot(W).toarray()
+    # On Netflix, base_X.dot(W).toarray() would densify a 429k x 17.7k
+    # matrix (~61 GB) and OOM. make_pred routes large products through
+    # LazyPred (per-user evaluation); ml-1m / ml-small stay eager.
+    pred_rp3 = make_pred(base_X, W)
     dt = time.time() - t0
     wrapped = _StandaloneWrapper(base_ease, pred_rp3)
     res = evaluate_at_ks(wrapped, train, test_positive, ks=ks)

@@ -63,7 +63,10 @@ class _Wrapper:
         enc_source : object with .user_enc and .item_enc attributes
             (e.g. ease_ref.ease)
         """
-        self.pred = X.dot(B)
+        # Use make_pred so Netflix gets a LazyPred wrapper (avoids 61 GB
+        # dense materialisation); ml-1m / ml-small stay on the eager path.
+        from models.lazy_pred import make_pred
+        self.pred = make_pred(X, B)
         self.ease = enc_source   # evaluate_at_ks reads .ease.user_enc / .item_enc
 
 
@@ -145,7 +148,6 @@ def run(dataset='ml-small', k=10,
         ease_ref.fit(train, method='score', fusion_alpha=1.0,
                      ease_lambda=lambda_, rp3_alpha=1.0,
                      rp3_beta=rp3_beta, rp3_topK=topK)
-        ease_ref.pred = ease_ref.ease.X.dot(ease_ref.ease.B)
         res_ease = evaluate_at_ks(ease_ref, train, test_positive, ks=ks)
         t_ease = time.time() - t0
         print(f"  EASE       NDCG@{k}={res_ease[f'NDCG@{k}']:.4f}  "

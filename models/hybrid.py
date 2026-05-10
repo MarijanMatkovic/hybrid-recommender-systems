@@ -117,27 +117,39 @@ class HybridEASE_RP3beta:
             # Level 1: Score-level ensemble
             # pred = α * (X @ B) + (1-α) * (X @ W)
             #
-            # The min-max normalisation needs the global min/max of each
-            # full pred matrix, which on Netflix is 61 GB and OOMs.
-            # Refuse to run score-fusion when the dense product would be
-            # too large -- main.py drops Hybrid-Score from the netflix
-            # grid for this reason.
-            n_users, n_items = X.shape[0], B.shape[1]
-            if n_users * n_items > LAZY_PRED_THRESHOLD:
-                raise NotImplementedError(
-                    "Hybrid-Score requires materialising two dense pred "
-                    "matrices for min-max normalisation; this would OOM "
-                    f"on the current dataset ({n_users}x{n_items} = "
-                    f"{n_users*n_items:.2e} cells). Use a smaller dataset "
-                    "or skip method='score'.")
-            pred_ease = X.dot(B)
-            pred_rp3 = X.dot(W).toarray()
-
-            # Normalize both score matrices to [0, 1] range for a fair combination
-            pred_ease_norm = self._min_max_normalize(pred_ease)
-            pred_rp3_norm = self._min_max_normalize(pred_rp3)
-
-            self.pred = fusion_alpha * pred_ease_norm + (1 - fusion_alpha) * pred_rp3_norm
+            # Edge cases first -- many experiment scripts call this with
+            # fusion_alpha=1.0 as a convenient way to fit pure EASE through
+            # the HybridEASE wrapper. Short-circuit those: skip the
+            # min-max normalisation (which requires materialising both
+            # full dense pred matrices ~ 2 x 61 GB on Netflix).
+            if fusion_alpha >= 1.0:
+                # Pure EASE -- no RP3 contribution at all.
+                self.pred = make_pred(X, B)
+            elif fusion_alpha <= 0.0:
+                # Pure RP3.
+                self.pred = make_pred(X, W)
+            else:
+                # Mixed score fusion needs the global min/max of both
+                # pred matrices -- which on Netflix is 61 GB each and
+                # OOMs. main.py drops Hybrid-Score from the netflix grid
+                # for this reason.
+                n_users, n_items = X.shape[0], B.shape[1]
+                if n_users * n_items > LAZY_PRED_THRESHOLD:
+                    raise NotImplementedError(
+                        "Hybrid-Score with 0 < fusion_alpha < 1 requires "
+                        "materialising two dense pred matrices for "
+                        "min-max normalisation; this would OOM on the "
+                        f"current dataset ({n_users}x{n_items} = "
+                        f"{n_users*n_items:.2e} cells). Use a smaller "
+                        "dataset, set fusion_alpha to 0 or 1, or skip "
+                        "method='score'.")
+                pred_ease = X.dot(B)
+                pred_rp3 = X.dot(W).toarray()
+                # Normalize both score matrices to [0, 1] range for a fair combination
+                pred_ease_norm = self._min_max_normalize(pred_ease)
+                pred_rp3_norm = self._min_max_normalize(pred_rp3)
+                self.pred = (fusion_alpha * pred_ease_norm
+                             + (1 - fusion_alpha) * pred_rp3_norm)
 
         elif method == 'matrix':
             # Level 2: Matrix-level fusion

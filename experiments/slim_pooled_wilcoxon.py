@@ -161,7 +161,6 @@ def run(dataset='ml-1m', k=10,
         ease_ref.fit(train, method='score', fusion_alpha=1.0,
                      ease_lambda=ease_lambda, rp3_alpha=1.0,
                      rp3_beta=rp3_beta, rp3_topK=rp3_topK)
-        ease_ref.pred = ease_ref.ease.X.dot(ease_ref.ease.B)
         res_ease = evaluate_at_ks(ease_ref, train, test_positive, ks=(k,))
         t_ease = time.time() - t0
         print(f"  EASE NDCG@{k}={res_ease[f'NDCG@{k}']:.4f}  ({t_ease:.1f}s)")

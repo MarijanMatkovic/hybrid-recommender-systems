@@ -76,7 +76,6 @@ def run(dataset='ml-small', k=10,
     # fusion_alpha=1.0 + score method reduces to pure EASE after min-max
     # normalisation. To stay apples-to-apples, evaluate via the plain EASE
     # prediction ``X @ B``.
-    base.pred = base.ease.X.dot(base.ease.B)
     res_base = evaluate_at_ks(base, train, test_positive, ks=ks)
     dt_base = time.time() - t0
     print(f"  NDCG@{k}={res_base[f'NDCG@{k}']:.4f} "

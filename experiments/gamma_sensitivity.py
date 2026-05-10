@@ -82,7 +82,6 @@ def run(dataset='ml-small', k=10,
         # fusion_alpha=1.0 reduces to EASE after min-max normalisation;
         # evaluate via pure X @ B to stay apples-to-apples with the
         # Laplacian-EASE scoring.
-        base.pred = base.ease.X.dot(base.ease.B)
         res_base = evaluate_at_ks(base, train, test_positive, ks=ks)
         dt_base = time.time() - t0
         print(f"  NDCG@{k}={res_base[f'NDCG@{k}']:.4f} "

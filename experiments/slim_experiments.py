@@ -194,7 +194,8 @@ def run(dataset='ml-small', k=10,
     ease_ref.fit(train, method='score', fusion_alpha=1.0,
                  ease_lambda=500 if dataset == 'ml-1m' else 200,
                  rp3_alpha=1.0, rp3_beta=rp3_beta, rp3_topK=topK)
-    ease_ref.pred = ease_ref.ease.X.dot(ease_ref.ease.B)
+    # hybrid.fit(method='score', fusion_alpha=1.0) already sets self.pred
+    # to make_pred(X, B) (lazy on Netflix); no eager override needed.
     res_ease = evaluate_at_ks(ease_ref, train, test_positive, ks=ks)
     t_ease = time.time() - t0
     print(f"  EASE NDCG@{k}={res_ease[f'NDCG@{k}']:.4f} "

@@ -249,8 +249,8 @@ def run(dataset='ml-small', k=10,
             l_diag_mean = float(np.mean(np.diag(L_raw)))
             L_scaled = (L_raw * (g_diag_mean / l_diag_mean)
                         if l_diag_mean > 0 else L_raw)
-            # Evaluate plain EASE via X @ B.
-            model.pred = model.ease.X.dot(model.ease.B)
+            # hybrid.fit(method='score', fusion_alpha=1.0) already sets
+            # self.pred to make_pred(X, B); no eager override needed.
         else:
             model.fit(train, method='laplacian',
                       ease_lambda=ease_lambda, rp3_alpha=1.0,

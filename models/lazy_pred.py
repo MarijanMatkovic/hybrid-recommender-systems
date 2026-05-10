@@ -47,6 +47,9 @@ import scipy.sparse as sps
 LAZY_PRED_THRESHOLD = 5e8
 
 
+_DEFAULT_BATCH_SIZE = 512
+
+
 class LazyPred:
     """Deferred ``X @ B``. Behaves as a 2D-ndarray-like for per-user-row
     indexing -- the only access pattern used by the evaluation code.
@@ -58,11 +61,25 @@ class LazyPred:
     materialisation we're trying to avoid. Without ``toarray`` the
     branch is skipped and the loop falls through to per-row indexing,
     which uses ``__getitem__`` below.
+
+    Batch caching
+    -------------
+    Per-row ``X[u] @ B`` is dominated by Python-loop overhead when called
+    one user at a time across ~430k users. To amortise this, the first
+    access to a user triggers materialisation of a contiguous batch of
+    ``batch_size`` rows (default 512); subsequent accesses inside that
+    batch are served from the cache. For sequential or near-sequential
+    user access patterns (which is what evaluate_at_ks does after a
+    groupby) this gives ~10-30x speedup over per-row matmul.
+
+    Memory cost per cached batch on Netflix: 512 * 17.7k * 8 bytes
+    = ~72 MB. Negligible compared to the 64 GB job budget.
     """
 
-    __slots__ = ('X', 'B', 'shape', 'dtype')
+    __slots__ = ('X', 'B', 'shape', 'dtype',
+                 '_batch_size', '_batch_start', '_batch_end', '_batch_data')
 
-    def __init__(self, X, B):
+    def __init__(self, X, B, batch_size=_DEFAULT_BATCH_SIZE):
         self.X = X
         self.B = B
         n_users = X.shape[0]
@@ -75,17 +92,34 @@ class LazyPred:
         self.dtype = np.result_type(
             getattr(X, 'dtype', np.float64),
             getattr(B, 'dtype', np.float64))
+        self._batch_size = max(1, int(batch_size))
+        self._batch_start = -1
+        self._batch_end = -1
+        self._batch_data = None
+
+    def _ensure_batch(self, idx):
+        """Materialise the batch covering ``idx`` if not already cached."""
+        if self._batch_start <= idx < self._batch_end:
+            return
+        bs = self._batch_size
+        self._batch_start = (idx // bs) * bs
+        self._batch_end = min(self._batch_start + bs, self.shape[0])
+        chunk_x = self.X[self._batch_start:self._batch_end]
+        out = chunk_x @ self.B
+        if sps.issparse(out):
+            out = np.asarray(out.todense())
+        else:
+            out = np.asarray(out)
+        # Ensure 2D (chunk_x might collapse to 1D if batch=1)
+        if out.ndim == 1:
+            out = out.reshape(1, -1)
+        self._batch_data = out
 
     def _row(self, idx):
-        """Compute one user-row of pred = X @ B without materialising."""
-        row_x = self.X[int(idx)]
-        if sps.issparse(row_x):
-            # Single sparse row -> dense 1D ndarray
-            row_x = np.asarray(row_x.toarray()).ravel()
-        else:
-            row_x = np.asarray(row_x).ravel()
-        # Now row_x is (n_items,) dense; B is (n_items, n_items) dense.
-        return np.asarray(row_x @ self.B)
+        """Compute one user-row of pred = X @ B (batch-cached)."""
+        idx = int(idx)
+        self._ensure_batch(idx)
+        return self._batch_data[idx - self._batch_start]
 
     def __getitem__(self, key):
         # Most common pattern: pred[user_idx, :]
