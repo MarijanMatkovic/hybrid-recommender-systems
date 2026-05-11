@@ -1,0 +1,32 @@
+#!/bin/bash
+# =====================================================================
+# Faruqui retrofitting of EASE B columns over a genre-cosine graph.
+# Roadmap item 11. Closed-form fixed point in 3-10 Jacobi sweeps.
+# =====================================================================
+#PBS -N retrofit_ease
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=4:00:00
+#PBS -j oe
+#PBS -o logs/retrofit_ease_primary.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4
+export OPENBLAS_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+
+DATASET="${DATASET:-ml-1m}"
+ALPHAS="${ALPHAS:-5.0,20.0,50.0,100.0}"
+N_ITERS="${N_ITERS:-3,5,10}"
+SEEDS="${SEEDS:-0,1,2,3,4}"
+
+python -u -m experiments.retrofit_ease \
+    --dataset "$DATASET" \
+    --k 10 \
+    --alphas "$ALPHAS" \
+    --n_iters "$N_ITERS" \
+    --split_mode random \
+    --seeds "$SEEDS"

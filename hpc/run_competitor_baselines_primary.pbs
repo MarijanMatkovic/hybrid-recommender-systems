@@ -1,0 +1,39 @@
+#!/bin/bash
+# =====================================================================
+# Direct competitor closed-form linear AEs on the primary protocol.
+# Roadmap items 10 (L^3AE), 12 (DAN), 13 (SVD-AE).
+#
+# Override on submit:
+#   qsub -v SVD_KS="64,128",DAN_ALPHAS="0.5" hpc/run_competitor_baselines_primary.pbs
+# =====================================================================
+#PBS -N competitor_baselines
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=8:00:00
+#PBS -j oe
+#PBS -o logs/competitor_baselines_primary.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4
+export OPENBLAS_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+
+DATASET="${DATASET:-ml-1m}"
+DAN_ALPHAS="${DAN_ALPHAS:-0.0,0.25,0.5,0.75,1.0}"
+SVD_KS="${SVD_KS:-64,128,256}"
+SVD_FILTERS="${SVD_FILTERS:-identity,turbo_cf}"
+L3AE_ALPHAS="${L3AE_ALPHAS:-0.1,1.0,5.0}"
+SEEDS="${SEEDS:-0,1,2,3,4}"
+
+python -u -m experiments.competitor_baselines \
+    --dataset "$DATASET" \
+    --k 10 \
+    --dan_alphas "$DAN_ALPHAS" \
+    --svd_ks "$SVD_KS" \
+    --svd_filters "$SVD_FILTERS" \
+    --l3ae_alphas "$L3AE_ALPHAS" \
+    --split_mode random \
+    --seeds "$SEEDS"

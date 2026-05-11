@@ -7,3 +7,4 @@ from .score_fusion import (
     edlae_dropout_variance,
     materialise_pred,
 )
+from .retrofit import retrofit

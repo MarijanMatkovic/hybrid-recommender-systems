@@ -43,6 +43,17 @@ Reference: <https://wiki.srce.hr/spaces/NR/pages/121966084/>
 | `run_head_tail_primary_multiseed_netflix.pbs` | Head/tail user-activity for Lap-EASE(γ=3), 5 primary seeds (Netflix)  |
 | `run_edlae_multiseed_netflix.pbs`      | Multi-seed EDLAE / Lap-EDLAE on Netflix (5 primary seeds)                   |
 | `run_gs_ease_primary_netflix.pbs`      | GS-EASE primary 5-seed sweep on Netflix                                     |
+| **Closed-form roadmap (items 1-9)**    | (compass_artifact_*.md highest-impact strategies)                            |
+| `run_spectral_kernels_primary.pbs`     | Smola-Kondor menu (heat, p-step, reg-Lap, inv-cos) x graph source (item 5)   |
+| `run_closed_form_extensions_primary.pbs` | Multi-Lap + Gram-shrink + Mahalanobis-shrink combined sweep (items 3, 4, 6) |
+| `run_poly_filter_primary.pbs`          | Turbo-CF / Chebyshev pre-processing of X then EASE (item 7)                  |
+| `run_cease_primary.pbs`                | CEASE + Add-EASE side-info baselines (item 2, mandatory)                     |
+| `run_score_fusion_primary.pbs`         | RRF + CombMNZ + inverse-variance fusion ablation (items 1, 9)                |
+| **Closed-form roadmap (items 10-15)**  |                                                                              |
+| `run_competitor_baselines_primary.pbs` | L^3AE + DAN + SVD-AE (with/without filter) competitor baselines (10, 12, 13) |
+| `run_heat_gram_primary.pbs`            | Heat / PPR pre-smoothed Gram sweep (item 14)                                 |
+| `run_signed_laplacian_primary.pbs`     | Signed-Laplacian EASE on liked/disliked co-occurrence (item 15)              |
+| `run_retrofit_ease_primary.pbs`        | Faruqui retrofitting of EASE B columns over genre graph (item 11)            |
 | **Utilities**                          |                                                                              |
 | `submit_all.sh`                        | `qsub`s every job in one go                                                  |
 | `submit_symmetric.sh`                  | Sym-Laplacian sweep + diagnostics                                            |
