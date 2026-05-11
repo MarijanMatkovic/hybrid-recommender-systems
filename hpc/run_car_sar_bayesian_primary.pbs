@@ -1,0 +1,36 @@
+#!/bin/bash
+# =====================================================================
+# CAR / SAR Bayesian-prior EASE sweep (roadmap item 18).
+# Grid-search over (mu, rho) with both CAR (D - rho W) and SAR
+# ((I - rho W)^T (I - rho W)) precision matrices.
+# =====================================================================
+#PBS -N car_sar_bayesian
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=12:00:00
+#PBS -j oe
+#PBS -o logs/car_sar_bayesian_primary.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4
+export OPENBLAS_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+
+DATASET="${DATASET:-ml-1m}"
+MUS="${MUS:-1,3,10,30}"
+RHOS="${RHOS:-0.1,0.5,0.9}"
+PRIORS="${PRIORS:-car,sar}"
+GRAPH_SOURCE="${GRAPH_SOURCE:-rp3beta}"
+SEEDS="${SEEDS:-0,1,2,3,4}"
+
+python -u -m experiments.car_sar_sweep \
+    --dataset "$DATASET" \
+    --k 10 \
+    --mus "$MUS" \
+    --rhos "$RHOS" \
+    --priors "$PRIORS" \
+    --graph_source "$GRAPH_SOURCE" \
+    --seeds "$SEEDS"

@@ -1,0 +1,37 @@
+#!/bin/bash
+# =====================================================================
+# Feature-Weighted Linear Stacking ablation (roadmap item 16).
+# Per-user adaptive ensemble of {EASE, RP3beta, EDLAE} via closed-form
+# ridge regression. Holds out 10% of train interactions for FWLS
+# supervision (avoids test-leak).
+# =====================================================================
+#PBS -N fwls
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=6:00:00
+#PBS -j oe
+#PBS -o logs/fwls_primary.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4
+export OPENBLAS_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+
+DATASET="${DATASET:-ml-1m}"
+EDLAE_DROPOUT="${EDLAE_DROPOUT:-0.5}"
+FWLS_LAMBDAS="${FWLS_LAMBDAS:-0.1,1.0,10.0}"
+FWLS_NEG_PER_POS="${FWLS_NEG_PER_POS:-5}"
+FWLS_VAL_FRAC="${FWLS_VAL_FRAC:-0.1}"
+SEEDS="${SEEDS:-0,1,2,3,4}"
+
+python -u -m experiments.fwls_ablation \
+    --dataset "$DATASET" \
+    --k 10 \
+    --edlae_dropout "$EDLAE_DROPOUT" \
+    --fwls_lambdas "$FWLS_LAMBDAS" \
+    --fwls_neg_per_pos "$FWLS_NEG_PER_POS" \
+    --fwls_val_frac "$FWLS_VAL_FRAC" \
+    --seeds "$SEEDS"

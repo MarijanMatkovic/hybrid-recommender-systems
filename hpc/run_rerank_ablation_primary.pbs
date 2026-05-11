@@ -1,0 +1,38 @@
+#!/bin/bash
+# =====================================================================
+# Re-ranking ablation: DPP-MAP + PPR diffusion + GF-CF -> EASE cascade
+# (roadmap items 17, 19, 20). All operate on top of a single fitted
+# EASE and reshape the per-user score vector before top-k selection.
+# =====================================================================
+#PBS -N rerank_ablation
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=8:00:00
+#PBS -j oe
+#PBS -o logs/rerank_ablation_primary.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4
+export OPENBLAS_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+
+DATASET="${DATASET:-ml-1m}"
+PPR_ALPHAS="${PPR_ALPHAS:-0.3,0.5,0.7}"
+PPR_ITERS="${PPR_ITERS:-10}"
+DPP_TOP_POOLS="${DPP_TOP_POOLS:-100,200}"
+CASCADE_TOP_NS="${CASCADE_TOP_NS:-200,500}"
+CASCADE_GFCF_K="${CASCADE_GFCF_K:-256}"
+SEEDS="${SEEDS:-0,1,2,3,4}"
+
+python -u -m experiments.rerank_ablation \
+    --dataset "$DATASET" \
+    --k 10 \
+    --ppr_alphas "$PPR_ALPHAS" \
+    --ppr_iters "$PPR_ITERS" \
+    --dpp_top_pools "$DPP_TOP_POOLS" \
+    --cascade_top_ns "$CASCADE_TOP_NS" \
+    --cascade_gfcf_k "$CASCADE_GFCF_K" \
+    --seeds "$SEEDS"
