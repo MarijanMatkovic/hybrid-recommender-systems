@@ -1,0 +1,38 @@
+#!/bin/bash
+# =====================================================================
+# CEASE + Add-EASE side-information baselines (roadmap item 2).
+# Mandatory comparator before claiming novelty in any closed-form
+# side-info regime.
+#
+# Movie genres serve as the tag matrix T. Netflix-Prize is not
+# supported here (no genre metadata in the source files).
+# =====================================================================
+#PBS -N cease_baselines
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=4:00:00
+#PBS -j oe
+#PBS -o logs/cease_baselines_primary.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4
+export OPENBLAS_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+
+DATASET="${DATASET:-ml-1m}"
+CEASE_ALPHA_T="${CEASE_ALPHA_T:-0.1,1.0,5.0}"
+ADD_ALPHAS="${ADD_ALPHAS:-0.3,0.5,0.7}"
+ADD_LAMBDA_T="${ADD_LAMBDA_T:-1.0,10.0}"
+SEEDS="${SEEDS:-0,1,2,3,4}"
+
+python -u -m experiments.cease_baselines \
+    --dataset "$DATASET" \
+    --k 10 \
+    --cease_alpha_T "$CEASE_ALPHA_T" \
+    --add_alphas "$ADD_ALPHAS" \
+    --add_lambda_T "$ADD_LAMBDA_T" \
+    --split_mode random \
+    --seeds "$SEEDS"

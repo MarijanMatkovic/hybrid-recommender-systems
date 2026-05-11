@@ -1,0 +1,43 @@
+#!/bin/bash
+# =====================================================================
+# Closed-form Lap-EASE extension sweep (roadmap items 3, 4, 6).
+#  - Gram-shrinkage EASE (DUET-style)
+#  - Multi-Laplacian EASE (rp3beta + p3alpha)
+#  - Mahalanobis-shrink EASE with anchors {W^2, D^-1 W, V_k V_k^T}
+#
+# Override on submit:
+#   qsub -v MAHAL_ANCHORS="W2,rw" hpc/run_closed_form_extensions_primary.pbs
+# =====================================================================
+#PBS -N closed_form_ext
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=12:00:00
+#PBS -j oe
+#PBS -o logs/closed_form_extensions_primary.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4
+export OPENBLAS_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+
+DATASET="${DATASET:-ml-1m}"
+GAMMAS="${GAMMAS:-1,3,10}"
+GRAM_RHOS="${GRAM_RHOS:-0.05,0.1,0.2}"
+MAHAL_ANCHORS="${MAHAL_ANCHORS:-W2,rw,lowpass}"
+NORMALISE="${NORMALISE:-sym}"
+SEEDS="${SEEDS:-0,1,2,3,4}"
+TOP_K_EIG="${TOP_K_EIG:-128}"
+
+python -u -m experiments.closed_form_extensions \
+    --dataset "$DATASET" \
+    --k 10 \
+    --gammas "$GAMMAS" \
+    --gram_rhos "$GRAM_RHOS" \
+    --mahal_anchors "$MAHAL_ANCHORS" \
+    --normalise "$NORMALISE" \
+    --split_mode random \
+    --seeds "$SEEDS" \
+    --top_k_eig "$TOP_K_EIG"

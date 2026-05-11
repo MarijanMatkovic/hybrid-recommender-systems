@@ -1,0 +1,40 @@
+#!/bin/bash
+# =====================================================================
+# Polynomial graph-filter pre-processing of X + plain EASE
+# (roadmap item 7). Turbo-CF and Chebyshev low-pass filters.
+#
+# Override on submit:
+#   qsub -v FILTERS="turbo_cf",TURBO_ALPHA=0.8 \
+#        hpc/run_poly_filter_primary.pbs
+# =====================================================================
+#PBS -N poly_filter_ease
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=6:00:00
+#PBS -j oe
+#PBS -o logs/poly_filter_primary.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4
+export OPENBLAS_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+
+DATASET="${DATASET:-ml-1m}"
+FILTERS="${FILTERS:-turbo_cf,chebyshev}"
+TURBO_ALPHA="${TURBO_ALPHA:-0.7}"
+TURBO_K="${TURBO_K:-2}"
+CHEBY_K="${CHEBY_K:-4}"
+SEEDS="${SEEDS:-0,1,2,3,4}"
+
+python -u -m experiments.poly_filter_ease \
+    --dataset "$DATASET" \
+    --k 10 \
+    --filters "$FILTERS" \
+    --turbo_alpha "$TURBO_ALPHA" \
+    --turbo_K "$TURBO_K" \
+    --cheby_K "$CHEBY_K" \
+    --split_mode random \
+    --seeds "$SEEDS"

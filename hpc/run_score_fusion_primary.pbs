@@ -1,0 +1,36 @@
+#!/bin/bash
+# =====================================================================
+# Output-level score fusion ablation (roadmap items 1 + 9).
+# Compares RRF, CombMNZ-zscore, and EDLAE-variance inverse-variance
+# fusion against linear alpha-blend, all over EASE+RP3beta+EDLAE.
+#
+# Note: requires dense materialisation of the full pred matrices
+# (~165 MB on ml-1m), so this is *not* runnable on Netflix without
+# chunked fusion.
+# =====================================================================
+#PBS -N score_fusion
+#PBS -q cpu
+#PBS -l select=1:ncpus=8:mem=32gb
+#PBS -l walltime=4:00:00
+#PBS -j oe
+#PBS -o logs/score_fusion_primary.log
+
+cd "${PBS_O_WORKDIR:-$PWD}"
+source hpc/_prologue.sh
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=4
+export OPENBLAS_NUM_THREADS=4
+export MKL_NUM_THREADS=4
+
+DATASET="${DATASET:-ml-1m}"
+EDLAE_DROPOUT="${EDLAE_DROPOUT:-0.5}"
+RRF_K="${RRF_K:-60}"
+SEEDS="${SEEDS:-0,1,2,3,4}"
+
+python -u -m experiments.score_fusion_ablation \
+    --dataset "$DATASET" \
+    --k 10 \
+    --edlae_dropout "$EDLAE_DROPOUT" \
+    --rrf_k "$RRF_K" \
+    --seeds "$SEEDS"
