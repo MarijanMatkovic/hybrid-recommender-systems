@@ -20,10 +20,10 @@ from __future__ import annotations
 import numpy as np
 import scipy.sparse as sps
 from scipy.sparse import csr_matrix, diags
-from scipy.sparse.linalg import svds
 from sklearn.preprocessing import LabelEncoder
 
 from .lazy_pred import make_pred
+from .svd_utils import truncated_svd_safe
 
 
 class GFCF:
@@ -50,10 +50,12 @@ class GFCF:
         Di_inv_sq = diags(1.0 / np.sqrt(di))
         R_tilde = (Du_inv_sq @ R @ Di_inv_sq).astype(np.float64)
 
-        # Truncated SVD for the ideal low-pass projector
-        kk = max(1, min(int(k), min(R_tilde.shape) - 1))
-        _, _, Vt = svds(R_tilde, k=kk)
-        V_k = Vt.T  # (n_items, kk)
+        # Truncated SVD via safe helper -- dense LAPACK on small data
+        # to avoid the ARPACK segfault observed on the cluster for
+        # k >= 128 (which is the typical GF-CF rank).
+        _, _, Vt = truncated_svd_safe(R_tilde, k=k)
+        V_k = Vt.T  # (n_items, k)
+        kk = V_k.shape[1]
 
         # Linear / item-item filter: D_i^{-1/2} (R^T R) D_i^{-1/2}
         # (We rescale here so its diagonal mean matches the SVD term.)

@@ -20,11 +20,11 @@ from __future__ import annotations
 import numpy as np
 import scipy.sparse as sps
 from scipy.sparse import csr_matrix
-from scipy.sparse.linalg import svds
 from sklearn.preprocessing import LabelEncoder
 
 from .lazy_pred import make_pred
 from .poly_filter import apply_filter
+from .svd_utils import truncated_svd_safe
 
 
 class SVDAE:
@@ -59,14 +59,13 @@ class SVDAE:
             if not sps.issparse(X_target):
                 X_target = csr_matrix(X_target)
 
-        # Truncated SVD; ascending eigenvalues from scipy.svds
-        kk = max(1, min(int(k), min(X_target.shape) - 1))
-        U, s, Vt = svds(X_target.astype(np.float64), k=kk)
-        # Sort descending by singular value for clarity
-        order = np.argsort(-s)
-        s = s[order]
-        Vt = Vt[order, :]
-        V_k = Vt.T  # (n_items, kk)
+        # Truncated SVD via safe helper -- uses dense LAPACK on small
+        # data (ml-1m, ml-small) to avoid the ARPACK segfault observed
+        # on the SRCE cluster's Cray-Python build for k >= 128. On
+        # Netflix-scale matrices the helper falls back to svds.
+        U, s, Vt = truncated_svd_safe(X_target, k=k)
+        V_k = Vt.T  # (n_items, k)
+        kk = V_k.shape[1]
 
         s2 = s ** 2
         shrink = s2 / (s2 + lambdas)
